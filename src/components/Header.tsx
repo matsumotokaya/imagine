@@ -71,17 +71,15 @@ export const Header = ({ onBackToManager, bannerName, bannerId, onBannerNameChan
               />
             ) : (
               <div className="hidden sm:flex items-center gap-2 group/title">
-                <span className="text-white font-medium text-sm md:text-base truncate max-w-[150px] md:max-w-none">{bannerName}</span>
-                {bannerId && onBannerNameChange && (
-                  <button
+                {bannerId && onBannerNameChange ? (
+                  <span
                     onClick={handleStartEdit}
-                    className="opacity-0 group-hover/title:opacity-100 p-1 hover:bg-white/20 rounded transition-all flex-shrink-0"
-                    title={t('banner:editName')}
+                    className="text-white font-medium text-sm md:text-base truncate max-w-[150px] md:max-w-none cursor-text hover:bg-white/10 px-1.5 py-0.5 -mx-1.5 rounded transition-colors"
                   >
-                    <svg className="w-3 h-3 md:w-4 md:h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                  </button>
+                    {bannerName}
+                  </span>
+                ) : (
+                  <span className="text-white font-medium text-sm md:text-base truncate max-w-[150px] md:max-w-none">{bannerName}</span>
                 )}
                 {isAdmin && bannerId && onSaveAsTemplate && (
                   <button

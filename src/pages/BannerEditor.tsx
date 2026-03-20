@@ -22,6 +22,7 @@ import { isDataUrlImage, uploadDataUrlToBucket, uploadFileToBucket } from '../ut
 import { supabase } from '../utils/supabase';
 import { templateStorage } from '../utils/templateStorage';
 import { exportImageFromDataUrl } from '../utils/exportImage';
+import { createSilhouetteBlob } from '../utils/imageShadow';
 import { useEntranceAnimation } from '../hooks/useEntranceAnimation';
 import { LoadingOverlay } from '../components/canvas/LoadingOverlay';
 
@@ -62,6 +63,7 @@ export const BannerEditor = () => {
   const [textPlacementMode, setTextPlacementMode] = useState(false);
   const [panMode, setPanMode] = useState(false);
   const [isTransforming, setIsTransforming] = useState(false);
+  const [isGeneratingShadow, setIsGeneratingShadow] = useState(false);
   const isTransformingRef = useRef(false);
   const handleTransformingChange = useCallback((transforming: boolean) => {
     setIsTransforming(transforming);
@@ -916,8 +918,8 @@ export const BannerEditor = () => {
       const newImage: ImageElement = {
         id: newId,
         type: 'image',
-        x: 0,
-        y: 0,
+        x: (banner.template.width - width) / 2,
+        y: (banner.template.height - height) / 2,
         src: finalSrc,
         width,
         height,
@@ -936,7 +938,7 @@ export const BannerEditor = () => {
     immediateSave();
   };
 
-  const handleImageDrop = async (file: File, x: number, y: number, width: number, height: number) => {
+  const handleImageDrop = async (file: File, width: number, height: number) => {
     const newId = `image-${Date.now()}-${Math.random()}`;
     if (!user) {
       alert(t('message:error.imageLoginRequired'));
@@ -970,8 +972,8 @@ export const BannerEditor = () => {
       const newImage: ImageElement = {
         id: newId,
         type: 'image',
-        x,
-        y,
+        x: (banner.template.width - width) / 2,
+        y: (banner.template.height - height) / 2,
         src: publicUrl,
         width,
         height,
@@ -1165,6 +1167,132 @@ export const BannerEditor = () => {
   const handleShadowOpacityChange = (opacity: number) => {
     if (selectedElementIds.length > 0) {
       elementOps.updateElements(selectedElementIds, () => ({ shadowOpacity: opacity }));
+    }
+  };
+
+  // Get element dimensions (from data or from rendered Konva node for text)
+  const getElementSize = (el: CanvasElement): { w: number; h: number } => {
+    if (el.type === 'image' || el.type === 'shape') {
+      const sized = el as ImageElement | ShapeElement;
+      return { w: sized.width, h: sized.height };
+    }
+    // Text elements: read actual size from the rendered Konva node
+    const nodesMap = canvasRef.current?.getNodesMap();
+    const node = nodesMap?.get(el.id);
+    if (node) {
+      return { w: node.width() * (node.scaleX?.() ?? 1), h: node.height() * (node.scaleY?.() ?? 1) };
+    }
+    return { w: 0, h: 0 };
+  };
+
+  // Center selected elements horizontally on canvas
+  const handleCenterHorizontal = () => {
+    if (selectedElementIds.length === 0 || !banner) return;
+    const cw = banner.template.width;
+    selectedElementIds.forEach(id => {
+      const el = elements.find(e => e.id === id);
+      if (!el) return;
+      const { w } = getElementSize(el);
+      elementOps.updateElement(id, { x: (cw - w) / 2 });
+    });
+  };
+
+  // Center selected elements vertically on canvas
+  const handleCenterVertical = () => {
+    if (selectedElementIds.length === 0 || !banner) return;
+    const ch = banner.template.height;
+    selectedElementIds.forEach(id => {
+      const el = elements.find(e => e.id === id);
+      if (!el) return;
+      const { h } = getElementSize(el);
+      elementOps.updateElement(id, { y: (ch - h) / 2 });
+    });
+  };
+
+  // Fit selected image to canvas while preserving aspect ratio
+  const handleFitToCanvas = () => {
+    if (selectedElementIds.length !== 1 || !banner) return;
+    const el = elements.find(e => e.id === selectedElementIds[0]);
+    if (!el || el.type !== 'image') return;
+    const imageEl = el as ImageElement;
+
+    const cw = banner.template.width;
+    const ch = banner.template.height;
+    const scale = Math.min(cw / imageEl.width, ch / imageEl.height);
+    const newW = imageEl.width * scale;
+    const newH = imageEl.height * scale;
+
+    elementOps.updateElement(imageEl.id, {
+      width: newW,
+      height: newH,
+      x: (cw - newW) / 2,
+      y: (ch - newH) / 2,
+    });
+  };
+
+  // Generate a black silhouette copy of the selected image as a shadow layer
+  const handleGenerateShadow = async () => {
+    if (selectedElementIds.length !== 1) return;
+    const sourceElement = elements.find(el => el.id === selectedElementIds[0]);
+    if (!sourceElement || sourceElement.type !== 'image') return;
+    const imageEl = sourceElement as ImageElement;
+
+    if (!user) {
+      alert(t('message:error.imageLoginRequired'));
+      return;
+    }
+
+    setIsGeneratingShadow(true);
+    try {
+      const silhouetteBlob = await createSilhouetteBlob(imageEl.src);
+      const file = new File([silhouetteBlob], 'shadow.png', { type: 'image/png' });
+      const fileBase = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const publicUrl = await uploadFileToBucket(file, 'user-images', fileBase);
+
+      const storagePath = publicUrl.split('/user-images/')[1];
+      if (storagePath) {
+        await supabase.from('user_images').insert({
+          user_id: user.id,
+          name: 'shadow.png',
+          storage_path: storagePath,
+          width: imageEl.width,
+          height: imageEl.height,
+          file_size: silhouetteBlob.size,
+        });
+      }
+
+      // 45-degree offset (down-right)
+      const offset = Math.min(imageEl.width, imageEl.height) * 0.05;
+      const shadowId = `image-${Date.now()}-${Math.random()}`;
+
+      setElements(prevElements => {
+        const sourceIndex = prevElements.findIndex(el => el.id === imageEl.id);
+        const shadowElement: ImageElement = {
+          id: shadowId,
+          type: 'image',
+          x: imageEl.x + offset,
+          y: imageEl.y + offset,
+          src: publicUrl,
+          width: imageEl.width,
+          height: imageEl.height,
+          rotation: imageEl.rotation,
+          opacity: 0.3,
+          visible: true,
+        };
+
+        // Insert shadow just behind the source element
+        const newElements = [...prevElements];
+        newElements.splice(sourceIndex, 0, shadowElement);
+        setTimeout(() => saveToHistory(newElements), 0);
+        return newElements;
+      });
+
+      setSelectedElementIds([shadowId]);
+      immediateSave();
+    } catch (error) {
+      console.error('Failed to generate shadow:', error);
+    } finally {
+      setIsGeneratingShadow(false);
     }
   };
 
@@ -1422,6 +1550,13 @@ export const BannerEditor = () => {
           onShadowOffsetXChange={handleShadowOffsetXChange}
           onShadowOffsetYChange={handleShadowOffsetYChange}
           onShadowOpacityChange={handleShadowOpacityChange}
+          onGenerateShadow={handleGenerateShadow}
+          isGeneratingShadow={isGeneratingShadow}
+          onFitToCanvas={handleFitToCanvas}
+          selectedCount={selectedElementIds.length}
+          selectedElements={elements.filter(el => selectedElementIds.includes(el.id))}
+          onCenterHorizontal={handleCenterHorizontal}
+          onCenterVertical={handleCenterVertical}
         />
       </div>
 
@@ -1551,6 +1686,12 @@ export const BannerEditor = () => {
             onShadowOffsetXChange={handleShadowOffsetXChange}
             onShadowOffsetYChange={handleShadowOffsetYChange}
             onShadowOpacityChange={handleShadowOpacityChange}
+            onGenerateShadow={handleGenerateShadow}
+            isGeneratingShadow={isGeneratingShadow}
+            onFitToCanvas={handleFitToCanvas}
+            selectedCount={selectedElementIds.length}
+            onCenterHorizontal={handleCenterHorizontal}
+            onCenterVertical={handleCenterVertical}
             isMobile={true}
             onClose={() => handleSelectElement([])}
             onDelete={handleDelete}

@@ -31,10 +31,23 @@ interface PropertyPanelProps {
   onShadowOffsetXChange?: (offset: number) => void;
   onShadowOffsetYChange?: (offset: number) => void;
   onShadowOpacityChange?: (opacity: number) => void;
+
+  // Generate shadow silhouette
+  onGenerateShadow?: () => void;
+  isGeneratingShadow?: boolean;
+
+  // Fit image to canvas
+  onFitToCanvas?: () => void;
+
+  // Canvas alignment
+  selectedCount?: number;
+  selectedElements?: CanvasElement[];
+  onCenterHorizontal?: () => void;
+  onCenterVertical?: () => void;
 }
 
 
-export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, onSizeChange, onWeightChange, onLetterSpacingChange, onLineHeightChange, onOpacityChange, onBringToFront, onSendToBack, isMobile = false, onClose, onDelete, onFillEnabledChange, onStrokeChange, onStrokeWidthChange, onStrokeEnabledChange, onShadowEnabledChange, onShadowColorChange, onShadowBlurChange, onShadowOffsetXChange, onShadowOffsetYChange, onShadowOpacityChange }: PropertyPanelProps) => {
+export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, onSizeChange, onWeightChange, onLetterSpacingChange, onLineHeightChange, onOpacityChange, onBringToFront, onSendToBack, isMobile = false, onClose, onDelete, onFillEnabledChange, onStrokeChange, onStrokeWidthChange, onStrokeEnabledChange, onShadowEnabledChange, onShadowColorChange, onShadowBlurChange, onShadowOffsetXChange, onShadowOffsetYChange, onShadowOpacityChange, onGenerateShadow, isGeneratingShadow, onFitToCanvas, selectedCount = 0, selectedElements = [], onCenterHorizontal, onCenterVertical }: PropertyPanelProps) => {
   const { t } = useTranslation('editor');
   const getWeightLabel = (weight: number): string => {
     if (weight <= 100) return t('properties.fontWeights.thin');
@@ -48,7 +61,150 @@ export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, on
     return t('properties.fontWeights.black');
   };
 
+  const alignmentControls = (onCenterHorizontal || onCenterVertical) && selectedCount >= 1 ? (
+    <div className={isMobile ? 'mb-2' : 'mb-4'}>
+      <label className="block text-xs font-medium text-gray-300 mb-2">
+        {t('properties.alignment')}
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        {onCenterHorizontal && (
+          <button
+            onClick={onCenterHorizontal}
+            className="px-3 py-2 text-xs font-medium text-gray-300 bg-[#333333] hover:bg-[#444444] rounded transition-colors flex items-center justify-center gap-1"
+          >
+            <span className="material-symbols-outlined text-[16px]">align_horizontal_center</span>
+            <span>{t('properties.centerX')}</span>
+          </button>
+        )}
+        {onCenterVertical && (
+          <button
+            onClick={onCenterVertical}
+            className="px-3 py-2 text-xs font-medium text-gray-300 bg-[#333333] hover:bg-[#444444] rounded transition-colors flex items-center justify-center gap-1"
+          >
+            <span className="material-symbols-outlined text-[16px]">align_vertical_center</span>
+            <span>{t('properties.centerY')}</span>
+          </button>
+        )}
+      </div>
+    </div>
+  ) : null;
+
   if (!selectedElement) {
+    // Multi-selection: show controls for batch editing
+    if (selectedCount >= 2) {
+      // Determine shared color for display (show "?" if mixed)
+      const colorableElements = selectedElements.filter(el => el.type === 'text' || el.type === 'shape') as (TextElement | ShapeElement)[];
+      const fills = colorableElements.map(el => el.fill);
+      const allSameFill = fills.length > 0 && fills.every(f => f === fills[0]);
+      const displayColor = allSameFill ? fills[0] : '#888888';
+
+      // Determine shared opacity
+      const opacities = selectedElements.map(el => el.opacity ?? 1);
+      const allSameOpacity = opacities.every(o => o === opacities[0]);
+      const displayOpacity = allSameOpacity ? opacities[0] : 0.5;
+
+      const multiContent = (
+        <>
+          <div className={isMobile ? 'mb-1' : 'mb-3'}>
+            <h2 className={`${isMobile ? 'text-sm' : 'text-base'} font-semibold text-gray-100`}>{t('properties.title')}</h2>
+          </div>
+          <div className={`${isMobile ? 'mb-2' : 'mb-4'} p-2 bg-[#2b2b2b] rounded-lg`}>
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-indigo-600 text-[18px]">select_all</span>
+              <span className="text-xs font-medium text-gray-300">{selectedCount} {t('properties.objectsSelected')}</span>
+            </div>
+          </div>
+
+          {/* Color selector for multi-selection */}
+          {colorableElements.length > 0 && (
+            <div className={isMobile ? 'mb-2' : 'mb-4'}>
+              <div className={`p-3 bg-[#2b2b2b] rounded-lg`}>
+                <label className={`block text-xs font-semibold text-gray-300 ${isMobile ? 'mb-1' : 'mb-3'}`}>{t('properties.fill')}</label>
+                {!allSameFill && (
+                  <p className="text-[10px] text-gray-500 mb-2">{t('properties.mixedColors')}</p>
+                )}
+                <ColorSelector
+                  selectedColor={displayColor}
+                  onColorChange={onColorChange}
+                  showInput={true}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Opacity slider for multi-selection */}
+          {onOpacityChange && (
+            <div className={isMobile ? 'mb-2' : 'mb-4'}>
+              <label className="block text-xs font-medium text-gray-300 mb-2">
+                {t('properties.opacity')}
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={displayOpacity * 100}
+                  onChange={(e) => onOpacityChange(Number(e.target.value) / 100)}
+                  className="flex-1 h-1.5 bg-[#444444] rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                />
+                <span className="text-xs font-medium text-gray-300 w-12 text-right">
+                  {allSameOpacity ? `${Math.round(displayOpacity * 100)}%` : '?'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {alignmentControls}
+          {/* Layer controls for multi-selection */}
+          <div>
+            <label className="block text-xs font-medium text-gray-300 mb-2">
+              {t('properties.layer')}
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={onBringToFront}
+                className="px-3 py-2 text-xs font-medium text-gray-300 bg-[#333333] hover:bg-[#444444] rounded transition-colors flex items-center justify-center gap-1"
+                title={t('properties.bringToFront')}
+              >
+                <span className="material-symbols-outlined text-[16px]">flip_to_front</span>
+                <span>{t('properties.bringToFront')}</span>
+              </button>
+              <button
+                onClick={onSendToBack}
+                className="px-3 py-2 text-xs font-medium text-gray-300 bg-[#333333] hover:bg-[#444444] rounded transition-colors flex items-center justify-center gap-1"
+                title={t('properties.sendToBack')}
+              >
+                <span className="material-symbols-outlined text-[16px]">flip_to_back</span>
+                <span>{t('properties.sendToBack')}</span>
+              </button>
+            </div>
+          </div>
+        </>
+      );
+
+      if (isMobile) {
+        return (
+          <div className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a]/80 backdrop-blur-sm border-t border-[#2b2b2b] rounded-t-2xl shadow-2xl z-50 max-h-[20vh] overflow-y-auto overflow-x-hidden">
+            <div className="flex justify-center pt-1.5 pb-0.5">
+              <div className="w-10 h-1 bg-gray-600 rounded-full" />
+            </div>
+            <div className="px-4 pb-3">
+              {multiContent}
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <aside className="w-60 bg-[#1a1a1a] border-l border-[#2b2b2b] overflow-y-auto">
+          <div className="p-4">
+            {multiContent}
+          </div>
+        </aside>
+      );
+    }
+
     if (isMobile) {
       return null;
     }
@@ -70,6 +226,8 @@ export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, on
 
   const isShapeElement = selectedElement.type === 'shape';
   const shapeElement = isShapeElement ? (selectedElement as ShapeElement) : null;
+
+  const isImageElement = selectedElement.type === 'image';
 
   const spacing = isMobile ? { section: 'mb-2', inner: 'mb-1', padding: 'p-2' } : { section: 'mb-4', inner: 'mb-3', padding: 'p-3' };
 
@@ -490,6 +648,38 @@ export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, on
           </div>
         </div>
       )}
+
+      {/* Image actions - image elements only */}
+      {isImageElement && (onFitToCanvas || onGenerateShadow) && (
+        <div className={spacing.section}>
+          <div className="flex flex-col gap-2">
+            {onFitToCanvas && (
+              <button
+                onClick={onFitToCanvas}
+                className="w-full px-3 py-2 text-xs font-medium text-gray-300 bg-[#333333] hover:bg-[#444444] rounded transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[16px]">fit_screen</span>
+                <span>{t('properties.fitToCanvas')}</span>
+              </button>
+            )}
+            {onGenerateShadow && (
+              <button
+                onClick={onGenerateShadow}
+                disabled={isGeneratingShadow}
+                className="w-full px-3 py-2 text-xs font-medium text-indigo-300 bg-indigo-500/20 hover:bg-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors flex items-center justify-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-[16px]">
+                  {isGeneratingShadow ? 'hourglass_empty' : 'auto_awesome'}
+                </span>
+                <span>{t('properties.generateShadow')}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Alignment controls - single selection */}
+      {alignmentControls}
 
       {/* Layer controls */}
       <div>

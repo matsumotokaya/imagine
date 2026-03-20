@@ -18,7 +18,7 @@ interface CanvasProps {
   onSelectElement?: (ids: string[]) => void;
   onElementUpdate?: (id: string, updates: Partial<CanvasElement>) => void;
   onElementsUpdate?: (ids: string[], updateFn: (element: CanvasElement) => Partial<CanvasElement>) => void;
-  onImageDrop?: (file: File, x: number, y: number, width: number, height: number) => void;
+  onImageDrop?: (file: File, width: number, height: number) => void;
   onImageLoad?: (id: string, status: 'loaded' | 'error') => void;
   entranceAnimationPhase?: 'idle' | 'loading' | 'animating' | 'complete';
   textPlacementMode?: boolean;
@@ -709,20 +709,12 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(function Canvas(
 
     if (imageFiles.length === 0) return;
 
-    // Get drop position relative to canvas
-    const stage = stageRef.current;
-    const stageContainer = stage.container().getBoundingClientRect();
-    const baseDropX = (e.clientX - stageContainer.left) / scale - BLEED;
-    const baseDropY = (e.clientY - stageContainer.top) / scale - BLEED;
-
     // Process each image file
-    imageFiles.forEach((imageFile, index) => {
+    imageFiles.forEach((imageFile) => {
       const objectUrl = URL.createObjectURL(imageFile);
       const img = new Image();
       img.onload = () => {
-        const offsetX = baseDropX + (index * 50);
-        const offsetY = baseDropY + (index * 50);
-        onImageDrop(imageFile, offsetX, offsetY, img.width, img.height);
+        onImageDrop(imageFile, img.width, img.height);
         URL.revokeObjectURL(objectUrl);
       };
       img.onerror = () => {

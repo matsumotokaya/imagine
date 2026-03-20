@@ -170,6 +170,7 @@ export const TextRenderer = memo(TextRendererComponent, (prevProps, nextProps) =
     prevProps.textElement.strokeEnabled === nextProps.textElement.strokeEnabled &&
     prevProps.textElement.strokeWidth === nextProps.textElement.strokeWidth &&
     prevProps.textElement.rotation === nextProps.textElement.rotation &&
+    prevProps.textElement.opacity === nextProps.textElement.opacity &&
     prevProps.textElement.visible === nextProps.textElement.visible &&
     prevProps.textElement.shadowEnabled === nextProps.textElement.shadowEnabled &&
     prevProps.textElement.shadowColor === nextProps.textElement.shadowColor &&
