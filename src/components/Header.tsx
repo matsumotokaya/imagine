@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthButton } from './AuthButton';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { ReleaseNotesModal } from './ReleaseNotesModal';
 
 interface HeaderProps {
   onBackToManager?: () => void;
@@ -17,6 +18,7 @@ export const Header = ({ onBackToManager, bannerName, bannerId, onBannerNameChan
   const { t } = useTranslation(['banner', 'common', 'auth']);
   const [isEditing, setIsEditing] = useState(false);
   const [editingName, setEditingName] = useState('');
+  const [isReleaseNotesOpen, setIsReleaseNotesOpen] = useState(false);
 
   const handleStartEdit = () => {
     if (bannerName) {
@@ -100,9 +102,18 @@ export const Header = ({ onBackToManager, bannerName, bannerId, onBannerNameChan
       </div>
 
       <div className="flex items-center gap-2 md:gap-4 flex-shrink-0">
+        <button
+          onClick={() => setIsReleaseNotesOpen(true)}
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+        >
+          <span className="material-symbols-outlined text-[16px]">new_releases</span>
+          <span>Release Notes</span>
+        </button>
         <LanguageSwitcher />
         <AuthButton />
       </div>
+
+      <ReleaseNotesModal isOpen={isReleaseNotesOpen} onClose={() => setIsReleaseNotesOpen(false)} />
     </header>
   );
 };
