@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../utils/supabase';
+import { createCheckoutSessionUrl } from '../utils/subscription';
 
 interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
-
-const STRIPE_PRICE_ID = import.meta.env.VITE_STRIPE_PRICE_ID;
 
 export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
   const { t } = useTranslation(['modal', 'message', 'common']);
@@ -23,37 +21,13 @@ export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
       return;
     }
 
-    if (!STRIPE_PRICE_ID) {
-      console.error('VITE_STRIPE_PRICE_ID is not configured');
-      alert(t('message:error.upgradeError'));
-      return;
-    }
-
     setLoading(true);
 
     try {
-      // Call Supabase Edge Function to create Stripe Checkout Session
-      const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-        body: {
-          userId: user.id,
-          priceId: STRIPE_PRICE_ID,
-        },
-      });
-
-      if (error) {
-        console.error('Error creating checkout session:', error);
-        alert(t('message:error.upgradeError'));
-        return;
-      }
-
-      if (data?.url) {
-        // Redirect to Stripe Checkout
-        window.location.href = data.url;
-      } else {
-        alert(t('message:error.upgradeError'));
-      }
+      const url = await createCheckoutSessionUrl(user.id);
+      window.location.href = url;
     } catch (error) {
-      console.error('Unexpected error:', error);
+      console.error('Failed to start upgrade checkout:', error);
       alert(t('message:error.upgradeError'));
     } finally {
       setLoading(false);
@@ -113,7 +87,7 @@ export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
               disabled={loading}
               className="w-full px-6 py-3 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 hover:from-yellow-500 hover:via-amber-600 hover:to-yellow-700 text-white font-bold rounded-lg transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? t('common:loading') : t('modal:upgrade.upgradeButton')}
+              {loading ? t('common:status.loading') : t('modal:upgrade.upgradeButton')}
             </button>
             <button
               onClick={onClose}

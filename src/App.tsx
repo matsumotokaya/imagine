@@ -16,6 +16,7 @@ import { SecurityPolicy } from './pages/legal/SecurityPolicy';
 import { AboutUs } from './pages/AboutUs';
 import { Contact } from './pages/Contact';
 import { MyPage } from './pages/MyPage';
+import { UpgradePage } from './pages/UpgradePage';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { AuthProvider } from './contexts/AuthContext';
 import { CookieConsent } from './components/CookieConsent';
@@ -46,6 +47,7 @@ function App() {
             <Route path="/legal/security" element={<SecurityPolicy />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/mypage" element={<MyPage />} />
+            <Route path="/upgrade" element={<UpgradePage />} />
             <Route path="/admin" element={<AdminDashboard />} />
           </Routes>
           <CookieConsent />
