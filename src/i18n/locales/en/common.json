@@ -70,6 +70,18 @@
     "description": "Phone wallpapers, SNS headers, custom icons and thumbnails. Create freely and easily with IMAGINE, the simple design tool.",
     "downloadButton": "Download as PNG"
   },
+  "templatePromo": {
+    "eyebrow": "Free Content",
+    "title": "Design Templates",
+    "description": "You can download and use these assets as wallpapers, avatars, and thumbnails as they are. You can also change layouts and rewrite text to easily create your own WHATIF-style original design."
+  },
+  "clubPromo": {
+    "eyebrow": "Premium Members-Only Content",
+    "title": "Wallpaper Downloads In The Club",
+    "description": "Imagine Premium members can also access The Club with the same account. Preview exclusive wallpapers and jump to the member entrance.",
+    "tag": "Premium only",
+    "more": "View More In The Club"
+  },
   "contact": {
     "title": "Contact Us",
     "description": "If you have any questions or requests, please feel free to contact us.",

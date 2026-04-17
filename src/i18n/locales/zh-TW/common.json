@@ -70,6 +70,18 @@
     "description": "手機桌布、社群媒體橫幅、專屬頭像與縮圖。簡單設計工具IMAGINE讓創作更自由、更簡單。",
     "downloadButton": "下載為PNG"
   },
+  "templatePromo": {
+    "eyebrow": "免費內容",
+    "title": "設計模板",
+    "description": "這些模板可直接下載並用於桌布、頭像、縮圖等用途。你也可以調整版面與文字，輕鬆製作屬於自己的 WHATIF 風格原創設計。"
+  },
+  "clubPromo": {
+    "eyebrow": "進階會員專屬內容",
+    "title": "The Club 桌布下載",
+    "description": "Imagine 進階會員可用同一帳號存取 The Club。先查看專屬桌布縮圖，再進入會員入口。",
+    "tag": "進階限定",
+    "more": "查看更多（前往 The Club）"
+  },
   "contact": {
     "title": "聯絡我們",
     "description": "如果您有任何問題或需求，請隨時與我們聯繫。",

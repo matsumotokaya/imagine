@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type SyntheticEvent } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
@@ -14,11 +14,35 @@ import { useTemplates, templateKeys } from '../hooks/useTemplates';
 import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates';
 import type { Template, TemplateRecord } from '../types/template';
 import { useAuth } from '../contexts/AuthContext';
+import { THE_CLUB_ENTRY_URL, THE_CLUB_THUMBNAILS } from '../data/theClubThumbnails';
 import { bannerStorage } from '../utils/bannerStorage';
 import { templateStorage } from '../utils/templateStorage';
 import { SIZE_CATEGORIES, filterBySize, getAspectClass, getGridCols } from '../utils/sizeCategories';
 
 const MAX_DISPLAY_COUNT = 30;
+const MAX_CLUB_THUMBNAILS = 50;
+
+const PromoSectionHeader = ({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) => (
+  <div className="mb-6 w-full">
+    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-400">
+      {eyebrow}
+    </p>
+    <h2 className="mt-2 text-2xl font-bold text-gray-100 md:text-3xl">
+      {title}
+    </h2>
+    <p className="mt-3 text-sm leading-relaxed text-gray-400 md:text-base">
+      {description}
+    </p>
+  </div>
+);
 
 export const TemplateGallery = () => {
   const { t } = useTranslation(['banner', 'common', 'message', 'auth', 'modal']);
@@ -33,8 +57,19 @@ export const TemplateGallery = () => {
   const isGuest = !user;
   const isAdmin = profile?.role === 'admin';
   const guestTemplateId = 'd9c4fee2-8e9c-4703-a507-57f3bde5d2b3';
+  const clubThumbnailPreviews = THE_CLUB_THUMBNAILS.slice(0, MAX_CLUB_THUMBNAILS);
 
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
+
+  const handleClubThumbnailError = (
+    e: SyntheticEvent<HTMLImageElement>,
+    fallbackUrl: string,
+  ) => {
+    const image = e.currentTarget;
+    if (image.dataset.fallbackApplied === 'true') return;
+    image.dataset.fallbackApplied = 'true';
+    image.src = fallbackUrl;
+  };
 
   // Handle reorder for templates (used by SortableGrid)
   const handleReorderTemplates = async (reorderedTemplates: TemplateRecord[]) => {
@@ -302,6 +337,14 @@ export const TemplateGallery = () => {
       )}
 
       <main className="max-w-7xl mx-auto px-6 py-8">
+        <section className="mb-10 border-t border-gray-800 pt-12">
+          <PromoSectionHeader
+            eyebrow={t('common:templatePromo.eyebrow')}
+            title={t('common:templatePromo.title')}
+            description={t('common:templatePromo.description')}
+          />
+        </section>
+
         <GalleryTabs />
 
         <div className="flex justify-between items-center mb-4">
@@ -365,6 +408,56 @@ export const TemplateGallery = () => {
               );
             })}
           </div>
+        )}
+
+        {!templatesLoading && (
+          <section className="mt-20 border-t border-gray-800 pt-12">
+            <PromoSectionHeader
+              eyebrow={t('common:clubPromo.eyebrow')}
+              title={t('common:clubPromo.title')}
+              description={t('common:clubPromo.description')}
+            />
+
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              {clubThumbnailPreviews.map((item) => (
+                <a
+                  key={item.id}
+                  href={THE_CLUB_ENTRY_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative overflow-hidden rounded-xl border border-gray-800 bg-gray-900/60 transition-all hover:border-amber-400/70 hover:shadow-lg hover:shadow-amber-500/10"
+                >
+                  <div className="aspect-square bg-gray-900">
+                    <img
+                      src={item.thumbnailUrlJpg}
+                      alt={`${item.label} wallpaper preview`}
+                      loading="lazy"
+                      onError={(e) => handleClubThumbnailError(e, item.thumbnailUrlPng)}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                    />
+                  </div>
+
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-2.5 py-2">
+                    <p className="text-xs font-semibold text-white">{item.label}</p>
+                    <p className="text-[10px] uppercase tracking-[0.15em] text-amber-300/90">
+                      {t('common:clubPromo.tag')}
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+
+            <div className="mt-8 text-center">
+              <a
+                href={THE_CLUB_ENTRY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center rounded-lg border border-gray-700 px-6 py-2.5 text-sm font-semibold text-gray-200 transition-colors hover:border-amber-400 hover:text-amber-300"
+              >
+                {t('common:clubPromo.more')}
+              </a>
+            </div>
+          </section>
         )}
       </main>
 

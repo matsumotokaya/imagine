@@ -70,6 +70,18 @@
     "description": "스마트폰 배경화면, SNS 헤더, 나만의 아이콘과 썸네일. 간단한 디자인 도구 IMAGINE으로 '만들기'를 더 자유롭게, 더 쉽게.",
     "downloadButton": "PNG로 다운로드"
   },
+  "templatePromo": {
+    "eyebrow": "무료 콘텐츠",
+    "title": "디자인 템플릿",
+    "description": "템플릿을 그대로 다운로드해 배경화면, 아바타, 썸네일 등에 사용할 수 있습니다. 또한 레이아웃과 문구를 바꾸면 누구나 쉽게 WHATIF 스타일의 오리지널 디자인을 만들 수 있습니다."
+  },
+  "clubPromo": {
+    "eyebrow": "프리미엄 회원 전용 콘텐츠",
+    "title": "The Club 배경화면 다운로드",
+    "description": "Imagine 프리미엄 회원은 같은 계정으로 The Club도 이용할 수 있습니다. 전용 배경화면 썸네일을 보고 회원 입구로 이동하세요.",
+    "tag": "프리미엄 전용",
+    "more": "더 보기 (The Club로 이동)"
+  },
   "contact": {
     "title": "문의하기",
     "description": "질문이나 요청 사항이 있으시면 언제든지 문의해 주세요.",

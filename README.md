@@ -23,6 +23,7 @@ npm run build
 - **Canvas**: Konva.js (react-konva)
 - **Styling**: TailwindCSS
 - **Backend**: Supabase (Auth, Database, Storage)
+- **Cross-service Promo (Temporary)**: The Club wallpaper thumbnail preview (`latest 50` snapshot) shown under the template list, sourced from Cloudflare R2 and linked to `https://whatif-ep.xyz/the-club`
 - **Email**:
   - `noreply@whatif-ep.xyz` - Outbound only (Resend SMTP). Password reset, contact form notifications
   - `contact@whatif-ep.xyz` - Inbound. Legal pages contact address. Cloudflare Email Routing → Gmail
@@ -96,7 +97,10 @@ Create `.env.local` for local development:
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_xxx
+VITE_THE_CLUB_R2_BASE_URL=https://pub-9339dc326a024891a297479881e66962.r2.dev
 ```
+
+`VITE_THE_CLUB_R2_BASE_URL` is optional (defaults to the current R2 public endpoint). It is used for the temporary The Club thumbnail preview section.
 
 For production (Vercel), set these in Project Settings → Environment Variables.
 

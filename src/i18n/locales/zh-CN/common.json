@@ -70,6 +70,18 @@
     "description": "手机壁纸、社交媒体横幅、专属头像和缩略图。简单设计工具IMAGINE让创作更自由、更简单。",
     "downloadButton": "下载为PNG"
   },
+  "templatePromo": {
+    "eyebrow": "免费内容",
+    "title": "设计模板",
+    "description": "这些模板可直接下载并用于壁纸、头像、缩略图等用途。你也可以修改版式和文字，轻松制作属于自己的 WHATIF 风格原创设计。"
+  },
+  "clubPromo": {
+    "eyebrow": "高级会员专属内容",
+    "title": "The Club 壁纸下载",
+    "description": "Imagine 高级会员可用同一账号访问 The Club。先查看专属壁纸缩略图，再进入会员入口。",
+    "tag": "高级限定",
+    "more": "查看更多（前往 The Club）"
+  },
   "contact": {
     "title": "联系我们",
     "description": "如果您有任何问题或需求，请随时与我们联系。",

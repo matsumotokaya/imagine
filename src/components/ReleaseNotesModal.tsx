@@ -10,6 +10,18 @@ interface ReleaseEntry {
 
 const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    date: 'April 18, 2026',
+    items: [
+      'Added a premium-only wallpaper preview section under the template gallery with a latest-50 snapshot from The Club thumbnails',
+      'Updated wallpaper preview layout: square thumbnails, 2 columns on mobile and 3 columns on desktop',
+      'Refined The Club promo copy and removed the top CTA button in that section',
+      'Adjusted the promo description area to use the full section width for cleaner line wrapping',
+      'Made the main header sticky and added a right-side hamburger navigation drawer',
+      'Added consolidated drawer links for services, legal/site pages, and social channels (mirroring footer-level navigation)',
+      'Previous session: improved Image Library performance with paged loading, infinite scroll, transformed preview URLs, and lazy/async image rendering',
+    ],
+  },
+  {
     date: 'March 21, 2026',
     items: [
       'Added Release Notes — this feature you are reading right now',
