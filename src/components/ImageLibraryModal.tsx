@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '../utils/supabase';
 import type { DefaultImage, UserImage } from '../types/image-library';
@@ -17,6 +17,9 @@ type DefaultImageWithUrl = DefaultImage & { displayUrl?: string };
 type UserImageWithUrl = UserImage & { displayUrl?: string };
 
 type ImageWithUrl = DefaultImageWithUrl | UserImageWithUrl;
+const PAGE_SIZE = 72;
+const PREVIEW_SIZE_PX = 256;
+const PREVIEW_QUALITY = 60;
 
 export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab = 'user' }: ImageLibraryModalProps) => {
   const { t } = useTranslation(['modal', 'message']);
@@ -24,36 +27,60 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
   const [defaultImages, setDefaultImages] = useState<DefaultImageWithUrl[]>([]);
   const [userImages, setUserImages] = useState<UserImageWithUrl[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [hasMoreDefault, setHasMoreDefault] = useState(true);
+  const [hasMoreUser, setHasMoreUser] = useState(true);
 
   // Cache for image URLs
   const urlCacheRef = useRef<Map<string, string>>(new Map());
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Fetch default images
-  const fetchDefaultImages = async () => {
-    setLoading(true);
+  // Fetch default images (paged)
+  const fetchDefaultImages = useCallback(async (reset = false) => {
+    if (!reset && (!hasMoreDefault || loading || loadingMore)) return;
+
+    const offset = reset ? 0 : defaultImages.length;
+    const to = offset + PAGE_SIZE - 1;
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
+
     const { data, error } = await supabase
       .from('default_images')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(offset, to);
 
     if (error) {
       console.error('Error fetching default images:', error);
-      setDefaultImages([]);
+      if (reset) setDefaultImages([]);
+      setHasMoreDefault(false);
     } else if (data) {
-      setDefaultImages(data);
+      setDefaultImages(prev => (reset ? data : [...prev, ...data]));
+      setHasMoreDefault(data.length === PAGE_SIZE);
     }
     setLoading(false);
-  };
+    setLoadingMore(false);
+  }, [defaultImages.length, hasMoreDefault, loading, loadingMore]);
 
-  // Fetch user images
-  const fetchUserImages = async () => {
-    setLoading(true);
+  // Fetch user images (paged)
+  const fetchUserImages = useCallback(async (reset = false) => {
+    if (!reset && (!hasMoreUser || loading || loadingMore)) return;
+
+    const offset = reset ? 0 : userImages.length;
+    const to = offset + PAGE_SIZE - 1;
+    if (reset) setLoading(true);
+    else setLoadingMore(true);
+
     const { data: { user } } = await supabase.auth.getUser();
 
     if (!user) {
       setLoading(false);
+      setLoadingMore(false);
+      setHasMoreUser(false);
+      setUserImages([]);
       return;
     }
 
@@ -61,16 +88,20 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
       .from('user_images')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(offset, to);
 
     if (error) {
       console.error('Error fetching user images:', error);
-      setUserImages([]);
+      if (reset) setUserImages([]);
+      setHasMoreUser(false);
     } else if (data) {
-      setUserImages(data);
+      setUserImages(prev => (reset ? data : [...prev, ...data]));
+      setHasMoreUser(data.length === PAGE_SIZE);
     }
     setLoading(false);
-  };
+    setLoadingMore(false);
+  }, [hasMoreUser, loading, loadingMore, userImages.length]);
 
   // Check if current user is admin by querying profiles table
   useEffect(() => {
@@ -108,12 +139,52 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
   useEffect(() => {
     if (isOpen) {
       if (activeTab === 'default') {
-        fetchDefaultImages();
+        fetchDefaultImages(true);
       } else {
-        fetchUserImages();
+        fetchUserImages(true);
       }
     }
-  }, [isOpen, activeTab]);
+  }, [isOpen, activeTab, fetchDefaultImages, fetchUserImages]);
+
+  // Infinite scroll: load next page when sentinel enters viewport
+  useEffect(() => {
+    if (!isOpen || loading || loadingMore) return;
+
+    const root = scrollContainerRef.current;
+    const sentinel = loadMoreSentinelRef.current;
+    if (!root || !sentinel) return;
+
+    const hasMore = activeTab === 'default' ? hasMoreDefault : hasMoreUser;
+    if (!hasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        if (activeTab === 'default') {
+          fetchDefaultImages(false);
+        } else {
+          fetchUserImages(false);
+        }
+      },
+      {
+        root,
+        rootMargin: '160px 0px',
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    activeTab,
+    fetchDefaultImages,
+    fetchUserImages,
+    hasMoreDefault,
+    hasMoreUser,
+    isOpen,
+    loading,
+    loadingMore,
+  ]);
 
   const MAX_FILE_SIZE_MB = 10;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
@@ -217,11 +288,8 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
         }
       }
 
-      if (activeTab === 'default') {
-        await fetchDefaultImages();
-      } else {
-        await fetchUserImages();
-      }
+      if (activeTab === 'default') await fetchDefaultImages(true);
+      else await fetchUserImages(true);
 
       if (failCount === 0) {
         alert(t('modal:imageLibrary.uploadSuccess', { count: successCount }));
@@ -239,13 +307,20 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
 
   // Get cached display URL for thumbnail preview
   const getCachedDisplayUrl = (storagePath: string, bucketName: 'default-images' | 'user-images'): string => {
-    const cacheKey = `${bucketName}:${storagePath}`;
+    const cacheKey = `${bucketName}:${storagePath}:preview`;
 
     if (urlCacheRef.current.has(cacheKey)) {
       return urlCacheRef.current.get(cacheKey)!;
     }
 
-    const { data } = supabase.storage.from(bucketName).getPublicUrl(storagePath);
+    const { data } = supabase.storage.from(bucketName).getPublicUrl(storagePath, {
+      transform: {
+        width: PREVIEW_SIZE_PX,
+        height: PREVIEW_SIZE_PX,
+        resize: 'contain',
+        quality: PREVIEW_QUALITY,
+      },
+    });
     const publicUrl = data.publicUrl;
     urlCacheRef.current.set(cacheKey, publicUrl);
 
@@ -277,6 +352,7 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
   const noImagesKey = activeTab === 'default' ? 'noDefaultImages' : 'noUserImages';
   const bucketName = activeTab === 'default' ? 'default-images' : 'user-images';
   const handleSelect = activeTab === 'default' ? handleSelectDefaultImage : handleSelectUserImage;
+  const hasMore = activeTab === 'default' ? hasMoreDefault : hasMoreUser;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -355,7 +431,7 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
         )}
 
         {/* Image Grid */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-6 py-4">
           {loading ? (
             <div className="flex items-center justify-center h-full">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-[#333] border-t-indigo-500"></div>
@@ -368,29 +444,44 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
               <p className="text-sm">{t(`modal:imageLibrary.${noImagesKey}`)}</p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-              {(images as ImageWithUrl[]).map((image) => (
-                  <button
-                    key={image.id}
-                    onClick={() => handleSelect(image as DefaultImageWithUrl & UserImageWithUrl)}
-                    className="group relative aspect-square rounded-md overflow-hidden border border-[#333] hover:border-indigo-500 transition-all bg-[#222]"
-                  >
-                    <img
-                      src={getCachedDisplayUrl(image.storage_path, bucketName)}
-                      alt={image.name}
-                      className="w-full h-full object-contain"
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
-                      <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 text-3xl drop-shadow-lg">
-                        add_circle
-                      </span>
-                    </div>
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white text-[10px] px-2 py-1.5 truncate">
-                      {image.name}
-                    </div>
-                  </button>
-                ))}
-            </div>
+            <>
+              <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
+                {(images as ImageWithUrl[]).map((image) => (
+                    <button
+                      key={image.id}
+                      onClick={() => handleSelect(image as DefaultImageWithUrl & UserImageWithUrl)}
+                      className="group relative aspect-square rounded-md overflow-hidden border border-[#333] hover:border-indigo-500 transition-all bg-[#222]"
+                    >
+                      <img
+                        src={getCachedDisplayUrl(image.storage_path, bucketName)}
+                        alt={image.name}
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                        <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 text-3xl drop-shadow-lg">
+                          add_circle
+                        </span>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white text-[10px] px-2 py-1.5 truncate">
+                        {image.name}
+                      </div>
+                    </button>
+                  ))}
+              </div>
+              <div ref={loadMoreSentinelRef} className="h-4" />
+              {loadingMore && (
+                <div className="py-3 flex items-center justify-center">
+                  <div className="inline-block animate-spin rounded-full h-6 w-6 border-2 border-[#333] border-t-indigo-500"></div>
+                </div>
+              )}
+              {!hasMore && images.length > 0 && (
+                <div className="py-2 text-center text-[11px] text-gray-500">
+                  End of library
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
