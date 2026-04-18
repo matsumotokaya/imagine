@@ -32,6 +32,10 @@
         "title": "存取所有進階版設計",
         "desc": "無限使用高品質範本"
       },
+      "theClub": {
+        "title": "解鎖 The CLUB 存取權限",
+        "desc": "可無限下載桌布等數位物品"
+      },
       "support": {
         "title": "無限設計檔案",
         "desc": "無限建立設計檔案"
@@ -43,7 +47,25 @@
     },
     "upgradeButton": "進階版方案（$8/月）",
     "cancel": "取消",
-    "comingSoon": "升級功能即將推出"
+    "comingSoon": "升級功能即將推出",
+    "freePlan": {
+      "name": "免費版",
+      "price": "$0",
+      "billing": "按月計費",
+      "active": "目前方案",
+      "feat1Title": "免費設計範本",
+      "feat1Desc": "使用所有免費範本",
+      "feat2Title": "無限設計檔案",
+      "feat2Desc": "隨意建立設計",
+      "feat3Title": "PNG / JPEG 匯出",
+      "feat3Desc": "隨時下載作品"
+    },
+    "premiumPlan": {
+      "name": "進階版",
+      "price": "$8",
+      "billing": "按月計費",
+      "upgradeButton": "升級方案"
+    }
   },
   "desktopRecommended": {
     "title": "建議使用電腦",

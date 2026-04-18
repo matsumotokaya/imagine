@@ -32,6 +32,10 @@
         "title": "Access to all Premium designs",
         "desc": "Unlimited use of high-quality templates"
       },
+      "theClub": {
+        "title": "The CLUB Access",
+        "desc": "Download unlimited wallpapers and digital items from The CLUB"
+      },
       "support": {
         "title": "Unlimited Design Files",
         "desc": "Create unlimited design files"
@@ -43,7 +47,25 @@
     },
     "upgradeButton": "Premium Plan ($8 / month)",
     "cancel": "Cancel",
-    "comingSoon": "Upgrade feature coming soon"
+    "comingSoon": "Upgrade feature coming soon",
+    "freePlan": {
+      "name": "Free",
+      "price": "$0",
+      "billing": "Billed Monthly",
+      "active": "Active",
+      "feat1Title": "Free design templates",
+      "feat1Desc": "Access to all free templates",
+      "feat2Title": "Unlimited design files",
+      "feat2Desc": "Create as many designs as you want",
+      "feat3Title": "PNG / JPEG export",
+      "feat3Desc": "Download your creations anytime"
+    },
+    "premiumPlan": {
+      "name": "Premium",
+      "price": "$8",
+      "billing": "Billed Monthly",
+      "upgradeButton": "Upgrade Plan"
+    }
   },
   "desktopRecommended": {
     "title": "Desktop Recommended",

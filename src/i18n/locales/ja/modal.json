@@ -32,6 +32,10 @@
         "title": "すべてのプレミアムデザインへのアクセス",
         "desc": "高品質テンプレートを無制限で利用可能"
       },
+      "theClub": {
+        "title": "The CLUB へのアクセスが解放",
+        "desc": "壁紙などのデジタルアイテムがダウンロード仕放題"
+      },
       "support": {
         "title": "デザインファイル無制限",
         "desc": "デザインファイルを無制限に作成可能"
@@ -43,7 +47,25 @@
     },
     "upgradeButton": "プレミアムプラン($8 / 月額)",
     "cancel": "キャンセル",
-    "comingSoon": "アップグレード機能は準備中です"
+    "comingSoon": "アップグレード機能は準備中です",
+    "freePlan": {
+      "name": "フリー",
+      "price": "$0",
+      "billing": "月払い",
+      "active": "現在のプラン",
+      "feat1Title": "フリーテンプレート",
+      "feat1Desc": "無料テンプレートをすべて利用可能",
+      "feat2Title": "デザインファイル無制限",
+      "feat2Desc": "何枚でもデザインを作成可能",
+      "feat3Title": "PNG / JPEG 書き出し",
+      "feat3Desc": "いつでも作品をダウンロード"
+    },
+    "premiumPlan": {
+      "name": "プレミアム",
+      "price": "$8",
+      "billing": "月払い",
+      "upgradeButton": "プランをアップグレード"
+    }
   },
   "desktopRecommended": {
     "title": "PC での利用を推奨",

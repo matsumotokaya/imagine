@@ -10,7 +10,8 @@
     "upgradeError": "Upgrade failed. Please try again.",
     "saveFailed": "Save failed",
     "imageLoginRequired": "Login required to add images.",
-    "imageUploadFailed": "Image upload failed."
+    "imageUploadFailed": "Image upload failed.",
+    "subscriptionPortalFailed": "Could not open subscription management. Please try again."
   },
   "success": {
     "uploadComplete": "{{count}} image(s) uploaded successfully",

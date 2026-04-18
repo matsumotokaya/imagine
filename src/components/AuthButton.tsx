@@ -2,14 +2,38 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../utils/supabase';
 
 export const AuthButton = () => {
   const { t } = useTranslation(['auth', 'common']);
   const { user, profile, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [portalLoading, setPortalLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const showUpgradeEntry = profile?.subscriptionTier !== 'premium';
+  const showManageSubscription = profile?.subscriptionTier === 'premium' && !!profile?.stripeCustomerId;
+
+  const handleManageSubscription = async () => {
+    if (!profile?.stripeCustomerId) return;
+    setPortalLoading(true);
+    setIsMenuOpen(false);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-portal-session', {
+        body: { customerId: profile.stripeCustomerId },
+      });
+      if (error || !data?.url) {
+        console.error('Error creating portal session:', error);
+        alert(t('auth:mypage.manageSubscription') + ' failed. Please try again.');
+        return;
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      console.error('Unexpected error:', err);
+    } finally {
+      setPortalLoading(false);
+    }
+  };
 
   // Debug: Log profile data
   useEffect(() => {
@@ -126,6 +150,19 @@ export const AuthButton = () => {
                 </svg>
                 <span>{t('auth:mypage.upgradeToPremium')}</span>
               </Link>
+            )}
+
+            {showManageSubscription && (
+              <button
+                onClick={handleManageSubscription}
+                disabled={portalLoading}
+                className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3 disabled:opacity-50"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                <span>{portalLoading ? t('common:label.loading') : t('auth:mypage.manageSubscription')}</span>
+              </button>
             )}
 
             {profile?.role === 'admin' && (

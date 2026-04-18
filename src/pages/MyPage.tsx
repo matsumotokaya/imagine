@@ -36,14 +36,18 @@ export function MyPage() {
 
       if (error) {
         console.error('Error creating portal session:', error);
+        alert(t('message:error.subscriptionPortalFailed'));
         return;
       }
 
       if (data?.url) {
         window.location.href = data.url;
+      } else {
+        alert(t('message:error.subscriptionPortalFailed'));
       }
     } catch (error) {
       console.error('Unexpected error:', error);
+      alert(t('message:error.subscriptionPortalFailed'));
     } finally {
       setPortalLoading(false);
     }

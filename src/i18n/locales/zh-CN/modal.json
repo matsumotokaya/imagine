@@ -32,6 +32,10 @@
         "title": "访问所有高级版设计",
         "desc": "无限使用高品质模板"
       },
+      "theClub": {
+        "title": "解锁 The CLUB 访问权限",
+        "desc": "可无限下载壁纸等数字物品"
+      },
       "support": {
         "title": "无限设计文件",
         "desc": "无限创建设计文件"
@@ -43,7 +47,25 @@
     },
     "upgradeButton": "高级版方案（$8/月）",
     "cancel": "取消",
-    "comingSoon": "升级功能即将推出"
+    "comingSoon": "升级功能即将推出",
+    "freePlan": {
+      "name": "免费版",
+      "price": "$0",
+      "billing": "按月计费",
+      "active": "当前方案",
+      "feat1Title": "免费设计模板",
+      "feat1Desc": "使用所有免费模板",
+      "feat2Title": "无限设计文件",
+      "feat2Desc": "随意创建设计",
+      "feat3Title": "PNG / JPEG 导出",
+      "feat3Desc": "随时下载作品"
+    },
+    "premiumPlan": {
+      "name": "高级版",
+      "price": "$8",
+      "billing": "按月计费",
+      "upgradeButton": "升级方案"
+    }
   },
   "desktopRecommended": {
     "title": "\u5efa\u8bae\u4f7f\u7528\u7535\u8111",
