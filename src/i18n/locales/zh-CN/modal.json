@@ -45,7 +45,7 @@
         "desc": "无限使用高级素材"
       }
     },
-    "upgradeButton": "高级版方案（$8/月）",
+    "upgradeButton": "高级版方案（$3/月）",
     "cancel": "取消",
     "comingSoon": "升级功能即将推出",
     "freePlan": {
@@ -62,7 +62,7 @@
     },
     "premiumPlan": {
       "name": "高级版",
-      "price": "$8",
+      "price": "$3",
       "billing": "按月计费",
       "upgradeButton": "升级方案"
     }

@@ -39,7 +39,7 @@ export function ChineseSimplifiedContent() {
 
       <Section title="第4条 (订阅)">
         <ol className="list-decimal list-inside space-y-2 text-gray-700">
-          <li>高级计划的费用为每月$8.00(美元)。</li>
+          <li>高级计划的费用为每月$3.00(美元)。</li>
           <li>付款通过Stripe处理,每月自动续订。</li>
           <li>用户可以随时从账户设置中取消订阅。</li>
           <li>取消后,用户可以继续使用服务直到当前计费周期结束。</li>

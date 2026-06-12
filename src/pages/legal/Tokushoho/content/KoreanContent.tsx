@@ -28,7 +28,7 @@ export function KoreanContent() {
       </Section>
 
       <Section title="판매 가격">
-        <p>월 $8.00 (미국 달러)</p>
+        <p>월 $3.00 (미국 달러)</p>
         <p className="text-sm text-gray-600 mt-1">
           ※가격은 세금 포함입니다. 환율에 따라 일본 엔 환산액은 변동될 수 있습니다.
         </p>

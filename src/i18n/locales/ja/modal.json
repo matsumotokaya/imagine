@@ -45,7 +45,7 @@
         "desc": "プレミアム素材の無制限の利用"
       }
     },
-    "upgradeButton": "プレミアムプラン($8 / 月額)",
+    "upgradeButton": "プレミアムプラン($3 / 月額)",
     "cancel": "キャンセル",
     "comingSoon": "アップグレード機能は準備中です",
     "freePlan": {
@@ -62,7 +62,7 @@
     },
     "premiumPlan": {
       "name": "プレミアム",
-      "price": "$8",
+      "price": "$3",
       "billing": "月払い",
       "upgradeButton": "プランをアップグレード"
     }

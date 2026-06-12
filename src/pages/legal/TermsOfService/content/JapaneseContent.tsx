@@ -39,7 +39,7 @@ export function JapaneseContent() {
 
       <Section title="第4条(サブスクリプション)">
         <ol className="list-decimal list-inside space-y-2 text-gray-700">
-          <li>プレミアムプランの料金は月額$8.00(米ドル)です。</li>
+          <li>プレミアムプランの料金は月額$3.00(米ドル)です。</li>
           <li>決済はStripeを通じて処理され、毎月自動更新されます。</li>
           <li>ユーザーはいつでもアカウント設定から解約できます。</li>
           <li>解約後も、現在の請求期間が終了するまでサービスを利用できます。</li>

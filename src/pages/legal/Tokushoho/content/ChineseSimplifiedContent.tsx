@@ -28,7 +28,7 @@ export function ChineseSimplifiedContent() {
       </Section>
 
       <Section title="销售价格">
-        <p>月费 $8.00 (美元)</p>
+        <p>月费 $3.00 (美元)</p>
         <p className="text-sm text-gray-600 mt-1">
           ※价格含税。日元换算金额因汇率而变动。
         </p>

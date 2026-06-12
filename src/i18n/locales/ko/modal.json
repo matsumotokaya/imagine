@@ -45,7 +45,7 @@
         "desc": "프리미엄 소재 무제한 이용"
       }
     },
-    "upgradeButton": "프리미엄 플랜 ($8/월)",
+    "upgradeButton": "프리미엄 플랜 ($3/월)",
     "cancel": "취소",
     "comingSoon": "업그레이드 기능 준비 중입니다",
     "freePlan": {
@@ -62,7 +62,7 @@
     },
     "premiumPlan": {
       "name": "프리미엄",
-      "price": "$8",
+      "price": "$3",
       "billing": "월 결제",
       "upgradeButton": "플랜 업그레이드"
     }

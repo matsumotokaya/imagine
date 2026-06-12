@@ -45,7 +45,7 @@
         "desc": "Unlimited use of premium materials"
       }
     },
-    "upgradeButton": "Premium Plan ($8 / month)",
+    "upgradeButton": "Premium Plan ($3 / month)",
     "cancel": "Cancel",
     "comingSoon": "Upgrade feature coming soon",
     "freePlan": {
@@ -62,7 +62,7 @@
     },
     "premiumPlan": {
       "name": "Premium",
-      "price": "$8",
+      "price": "$3",
       "billing": "Billed Monthly",
       "upgradeButton": "Upgrade Plan"
     }

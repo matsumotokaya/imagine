@@ -39,7 +39,7 @@ export function ChineseTraditionalContent() {
 
       <Section title="第4條 (訂閱)">
         <ol className="list-decimal list-inside space-y-2 text-gray-700">
-          <li>進階方案的費用為每月$8.00(美元)。</li>
+          <li>進階方案的費用為每月$3.00(美元)。</li>
           <li>付款透過Stripe處理,每月自動續訂。</li>
           <li>使用者可以隨時從帳戶設定中取消訂閱。</li>
           <li>取消後,使用者可以繼續使用服務直到當前計費週期結束。</li>

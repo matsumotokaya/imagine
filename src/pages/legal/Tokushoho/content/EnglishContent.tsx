@@ -28,7 +28,7 @@ export function EnglishContent() {
       </Section>
 
       <Section title="Price">
-        <p>$8.00 USD per month</p>
+        <p>$3.00 USD per month</p>
         <p className="text-sm text-gray-600 mt-1">
           ※Prices include applicable taxes. JPY equivalent may vary based on exchange rates.
         </p>

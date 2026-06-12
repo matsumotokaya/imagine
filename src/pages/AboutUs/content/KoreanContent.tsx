@@ -189,7 +189,7 @@ export function KoreanContent({ setSelectedImage }: ContentProps) {
             <div className="text-center mb-6">
               <h3 className="text-2xl font-bold text-white mb-2">Premium</h3>
               <div className="flex items-baseline justify-center gap-1">
-                <span className="text-5xl font-bold text-white">$8</span>
+                <span className="text-5xl font-bold text-white">$3</span>
                 <span className="text-purple-200">/월</span>
               </div>
             </div>

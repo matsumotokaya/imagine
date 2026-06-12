@@ -28,7 +28,7 @@ export function JapaneseContent() {
       </Section>
 
       <Section title="販売価格">
-        <p>月額 $8.00（米ドル）</p>
+        <p>月額 $3.00（米ドル）</p>
         <p className="text-sm text-gray-600 mt-1">
           ※価格は税込みです。為替レートにより日本円換算額は変動します。
         </p>

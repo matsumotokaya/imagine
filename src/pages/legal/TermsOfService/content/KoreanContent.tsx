@@ -39,7 +39,7 @@ export function KoreanContent() {
 
       <Section title="제4조 (구독)">
         <ol className="list-decimal list-inside space-y-2 text-gray-700">
-          <li>프리미엄 플랜의 요금은 월 $8.00(미국 달러)입니다.</li>
+          <li>프리미엄 플랜의 요금은 월 $3.00(미국 달러)입니다.</li>
           <li>결제는 Stripe를 통해 처리되며, 매월 자동으로 갱신됩니다.</li>
           <li>사용자는 언제든지 계정 설정에서 해지할 수 있습니다.</li>
           <li>해지 후에도 현재 청구 기간이 종료될 때까지 서비스를 이용할 수 있습니다.</li>

@@ -39,7 +39,7 @@ export function EnglishContent() {
 
       <Section title="Article 4 (Subscription)">
         <ol className="list-decimal list-inside space-y-2 text-gray-700">
-          <li>The Premium plan costs $8.00 USD per month.</li>
+          <li>The Premium plan costs $3.00 USD per month.</li>
           <li>Payments are processed through Stripe and automatically renewed monthly.</li>
           <li>Users can cancel anytime from account settings.</li>
           <li>After cancellation, service access continues until the end of the current billing period.</li>
