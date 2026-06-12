@@ -15,8 +15,9 @@ export const AuthPage = () => {
   const { user, signInWithGoogle, signInWithApple, signInWithEmail, signUpWithEmail, resetPassword, updatePassword } = useAuth();
 
   const redirectTo = searchParams.get('redirect') || '/';
-  const initialTab = (searchParams.get('tab') as AuthTab) || 'login';
-  const initialView = (searchParams.get('view') as AuthView) || 'form';
+  const sessionExpired = searchParams.get('reason') === 'session-expired';
+  const initialTab = sessionExpired ? 'login' : (searchParams.get('tab') as AuthTab) || 'login';
+  const initialView = sessionExpired ? 'form' : (searchParams.get('view') as AuthView) || 'form';
 
   const [tab, setTab] = useState<AuthTab>(initialTab);
   const [view, setView] = useState<AuthView>(initialView);
@@ -427,6 +428,11 @@ export const AuthPage = () => {
           </div>
 
           {/* Error message */}
+          {sessionExpired && (
+            <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
+              {t('auth:sessionExpired')}
+            </div>
+          )}
           {error && (
             <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
               {error}

@@ -6,6 +6,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const getStripeSecretKey = (stripeMode: unknown) => {
+  const normalizedMode = stripeMode === 'test' ? 'test' : 'live'
+  const testKey = Deno.env.get('STRIPE_TEST_SECRET_KEY')
+  const defaultKey = Deno.env.get('STRIPE_SECRET_KEY')
+
+  if (normalizedMode === 'test' && testKey) {
+    return testKey
+  }
+
+  if (defaultKey) {
+    return defaultKey
+  }
+
+  if (testKey) {
+    return testKey
+  }
+
+  throw new Error('No Stripe secret key configured')
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -13,11 +33,11 @@ serve(async (req) => {
   }
 
   try {
-    const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
+    const { userId, priceId, stripeMode } = await req.json()
+
+    const stripe = new Stripe(getStripeSecretKey(stripeMode), {
       apiVersion: '2023-10-16',
     })
-
-    const { userId, priceId } = await req.json()
 
     if (!userId || !priceId) {
       return new Response(

@@ -21,7 +21,7 @@ const GoldCheckIcon = () => (
 export const UpgradePage = () => {
   const { t } = useTranslation(['modal', 'auth', 'message', 'common']);
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, session, profile } = useAuth();
   const [loading, setLoading] = useState(false);
 
   const isPremium = profile?.subscriptionTier === 'premium';
@@ -37,7 +37,7 @@ export const UpgradePage = () => {
     }
     setLoading(true);
     try {
-      const url = await createCheckoutSessionUrl(user.id);
+      const url = await createCheckoutSessionUrl(user.id, session?.access_token);
       window.location.href = url;
     } catch (error) {
       console.error('Failed to start upgrade checkout:', error);

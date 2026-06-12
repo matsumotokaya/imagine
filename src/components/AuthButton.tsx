@@ -2,45 +2,57 @@ import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../utils/supabase';
+import { SubscriptionPortalErrorNotice } from './SubscriptionPortalErrorNotice';
+import {
+  createPortalSessionUrl,
+  isSubscriptionPortalSessionRecoveryError,
+  SubscriptionPortalError,
+  type SubscriptionPortalErrorDetails,
+} from '../utils/subscription';
 
 export const AuthButton = () => {
-  const { t } = useTranslation(['auth', 'common']);
-  const { user, profile, loading, signOut } = useAuth();
+  const { t } = useTranslation(['auth', 'common', 'message']);
+  const { user, session, profile, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState<SubscriptionPortalErrorDetails | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const showUpgradeEntry = profile?.subscriptionTier !== 'premium';
-  const showManageSubscription = profile?.subscriptionTier === 'premium' && !!profile?.stripeCustomerId;
+  const showManageSubscription = profile?.subscriptionTier === 'premium';
 
   const handleManageSubscription = async () => {
-    if (!profile?.stripeCustomerId) return;
     setPortalLoading(true);
-    setIsMenuOpen(false);
+    setPortalError(null);
     try {
-      const { data, error } = await supabase.functions.invoke('create-portal-session', {
-        body: { customerId: profile.stripeCustomerId },
-      });
-      if (error || !data?.url) {
-        console.error('Error creating portal session:', error);
-        alert(t('auth:mypage.manageSubscription') + ' failed. Please try again.');
+      window.location.href = await createPortalSessionUrl(session?.access_token);
+    } catch (err) {
+      console.error('Unexpected error creating portal session:', err);
+      if (isSubscriptionPortalSessionRecoveryError(err)) {
+        setIsMenuOpen(false);
+        await signOut();
+        const redirect = `${window.location.pathname}${window.location.search}`;
+        navigate(`/auth?reason=session-expired&redirect=${encodeURIComponent(redirect)}`, { replace: true });
         return;
       }
-      window.location.href = data.url;
-    } catch (err) {
-      console.error('Unexpected error:', err);
+      if (err instanceof SubscriptionPortalError) {
+        setPortalError(err.details);
+      } else {
+        setPortalError({
+          code: 'SubscriptionPortalUnknownError',
+          message: t('message:error.subscriptionPortalFailed'),
+          copyText: [
+            'error_code=SubscriptionPortalUnknownError',
+            'status=n/a',
+            'error_id=n/a',
+            `message=${err instanceof Error ? err.message : t('message:error.subscriptionPortalFailed')}`,
+          ].join('\n'),
+        });
+      }
     } finally {
       setPortalLoading(false);
     }
   };
-
-  // Debug: Log profile data
-  useEffect(() => {
-    if (profile) {
-      console.log('[AuthButton] Profile data:', profile);
-    }
-  }, [profile]);
 
   useEffect(() => {
     const handleClickOutside = (event: Event) => {
@@ -72,8 +84,12 @@ export const AuthButton = () => {
     return (
       <div className="relative flex items-center" ref={menuRef}>
         <button
+          type="button"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="w-9 h-9 rounded-full overflow-hidden hover:ring-2 hover:ring-white/50 transition-all"
+          className="size-9 overflow-hidden rounded-full transition-all hover:ring-2 hover:ring-white/50"
+          aria-label={t('auth:profile')}
+          aria-expanded={isMenuOpen}
+          aria-haspopup="menu"
         >
           {profile?.avatarUrl ? (
             <img
@@ -89,7 +105,10 @@ export const AuthButton = () => {
         </button>
 
         {isMenuOpen && (
-          <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden z-[80]">
+          <div
+            className="absolute right-0 top-full z-50 mt-2 max-h-[min(24rem,calc(100dvh-4.5rem))] w-72 overflow-y-auto overscroll-contain rounded-lg border border-gray-200 bg-white shadow-lg"
+            role="menu"
+          >
             <div className="p-4 border-b border-gray-200">
               <div className="flex items-center gap-3">
                 {profile?.avatarUrl ? (
@@ -153,16 +172,22 @@ export const AuthButton = () => {
             )}
 
             {showManageSubscription && (
-              <button
-                onClick={handleManageSubscription}
-                disabled={portalLoading}
-                className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3 disabled:opacity-50"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                </svg>
-                <span>{portalLoading ? t('common:label.loading') : t('auth:mypage.manageSubscription')}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleManageSubscription}
+                  disabled={portalLoading}
+                  className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3 disabled:opacity-50"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                  </svg>
+                  <span>{portalLoading ? t('common:label.loading') : t('auth:mypage.manageSubscription')}</span>
+                </button>
+                {portalError && (
+                  <SubscriptionPortalErrorNotice error={portalError} className="mx-4 mb-3" />
+                )}
+              </>
             )}
 
             {profile?.role === 'admin' && (
@@ -177,6 +202,7 @@ export const AuthButton = () => {
             )}
 
             <button
+              type="button"
               onClick={async () => {
                 setIsMenuOpen(false);
                 await signOut();

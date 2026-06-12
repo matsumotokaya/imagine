@@ -1,18 +1,26 @@
 import { useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../utils/supabase';
+import { SubscriptionPortalErrorNotice } from '../components/SubscriptionPortalErrorNotice';
+import {
+  createPortalSessionUrl,
+  isSubscriptionPortalSessionRecoveryError,
+  SubscriptionPortalError,
+  type SubscriptionPortalErrorDetails,
+} from '../utils/subscription';
 import { Footer } from '../components/Footer';
 
 export function MyPage() {
   const { t } = useTranslation(['auth', 'common', 'message']);
-  const { user, profile, loading, signOut } = useAuth();
+  const { user, session, profile, loading, signOut } = useAuth();
+  const navigate = useNavigate();
   const [portalLoading, setPortalLoading] = useState(false);
+  const [portalError, setPortalError] = useState<SubscriptionPortalErrorDetails | null>(null);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-dvh bg-gray-50 flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
@@ -26,28 +34,31 @@ export function MyPage() {
   const isCanceling = profile?.subscriptionStatus === 'canceling';
 
   const handleManageSubscription = async () => {
-    if (!profile?.stripeCustomerId) return;
-
     setPortalLoading(true);
+    setPortalError(null);
     try {
-      const { data, error } = await supabase.functions.invoke('create-portal-session', {
-        body: { customerId: profile.stripeCustomerId },
-      });
-
-      if (error) {
-        console.error('Error creating portal session:', error);
-        alert(t('message:error.subscriptionPortalFailed'));
+      window.location.href = await createPortalSessionUrl(session?.access_token);
+    } catch (error) {
+      console.error('Unexpected error creating portal session:', error);
+      if (isSubscriptionPortalSessionRecoveryError(error)) {
+        await signOut();
+        navigate('/auth?reason=session-expired&redirect=%2Fmypage', { replace: true });
         return;
       }
-
-      if (data?.url) {
-        window.location.href = data.url;
+      if (error instanceof SubscriptionPortalError) {
+        setPortalError(error.details);
       } else {
-        alert(t('message:error.subscriptionPortalFailed'));
+        setPortalError({
+          code: 'SubscriptionPortalUnknownError',
+          message: t('message:error.subscriptionPortalFailed'),
+          copyText: [
+            'error_code=SubscriptionPortalUnknownError',
+            'status=n/a',
+            'error_id=n/a',
+            `message=${error instanceof Error ? error.message : t('message:error.subscriptionPortalFailed')}`,
+          ].join('\n'),
+        });
       }
-    } catch (error) {
-      console.error('Unexpected error:', error);
-      alert(t('message:error.subscriptionPortalFailed'));
     } finally {
       setPortalLoading(false);
     }
@@ -63,7 +74,7 @@ export function MyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-dvh bg-gray-50 flex flex-col">
       <div className="flex-1 max-w-2xl mx-auto w-full px-4 py-12">
         {/* Header */}
         <div className="mb-8">
@@ -155,20 +166,21 @@ export function MyPage() {
                   {isCanceling ? t('auth:mypage.accessUntil') : t('auth:mypage.expiresAt')}: {formatDate(profile.subscriptionExpiresAt)}
                 </p>
               )}
-              {profile?.stripeCustomerId && (
-                <div>
-                  <button
-                    onClick={handleManageSubscription}
-                    disabled={portalLoading}
-                    className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {portalLoading ? t('common:label.loading') : t('auth:mypage.manageSubscription')}
-                  </button>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {t('auth:mypage.cancelNote')}
-                  </p>
-                </div>
-              )}
+              <div>
+                <button
+                  onClick={handleManageSubscription}
+                  disabled={portalLoading}
+                  className="px-5 py-2.5 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {portalLoading ? t('common:label.loading') : t('auth:mypage.manageSubscription')}
+                </button>
+                <p className="text-xs text-gray-400 mt-2">
+                  {t('auth:mypage.cancelNote')}
+                </p>
+                {portalError && (
+                  <SubscriptionPortalErrorNotice error={portalError} className="mt-3" />
+                )}
+              </div>
             </div>
           ) : (
             <div>
