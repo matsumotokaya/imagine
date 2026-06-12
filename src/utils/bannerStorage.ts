@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 import { cacheManager } from './cacheManager';
 import type { Banner, BannerListItem, CanvasElement, Template, TemplateRecord } from '../types/template';
 import { uploadDataUrlToBucket } from './storage';
@@ -50,6 +50,7 @@ const dbToBannerListItem = (db: DbBannerListItem): BannerListItem => ({
 
 export const bannerStorage = {
   async createFromTemplate(template: TemplateRecord, editorTemplate: Template): Promise<Banner | null> {
+    const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       alert('Login required');
@@ -84,6 +85,7 @@ export const bannerStorage = {
 
   // Get all banners (public + own private)
   async getAll(useCache = true): Promise<BannerListItem[]> {
+    const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       return [];
@@ -121,6 +123,7 @@ export const bannerStorage = {
 
   // Get banner by ID (public or own)
   async getById(id: string, useCache = true): Promise<Banner | null> {
+    const supabase = await getSupabase();
     const cacheKey = `banner:${id}`;
 
     // Check cache first
@@ -156,6 +159,7 @@ export const bannerStorage = {
 
   // Create new banner
   async create(name: string, template: Template): Promise<Banner | null> {
+    const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       alert('Login required');
@@ -189,6 +193,7 @@ export const bannerStorage = {
 
   // Update banner
   async update(id: string, updates: Partial<Omit<Banner, 'id' | 'createdAt'>>): Promise<void> {
+    const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -216,6 +221,7 @@ export const bannerStorage = {
 
   // Delete banner
   async delete(id: string): Promise<void> {
+    const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -236,6 +242,7 @@ export const bannerStorage = {
 
   // Duplicate banner (insert at top of list)
   async duplicate(id: string): Promise<Banner | null> {
+    const supabase = await getSupabase();
     const original = await this.getById(id);
     if (!original) return null;
 
@@ -282,6 +289,7 @@ export const bannerStorage = {
 
   // Save thumbnail
   async saveThumbnail(id: string, thumbnailDataURL: string): Promise<void> {
+    const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const fileBase = `${user.id}/thumbnails/${id}-${Date.now()}`;
@@ -298,6 +306,7 @@ export const bannerStorage = {
       thumbnailDataURL?: string;
     }
   ): Promise<void> {
+    const supabase = await getSupabase();
     // Only update if there are actual changes
     if (Object.keys(updates).length === 0) return;
     if (updates.thumbnailDataURL) {
@@ -327,6 +336,7 @@ export const bannerStorage = {
 
   // Update display orders for multiple banners
   async updateDisplayOrders(orders: { id: string; displayOrder: number }[]): Promise<void> {
+    const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 

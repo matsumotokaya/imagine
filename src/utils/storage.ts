@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabase, getSupabaseStoragePublicUrl } from './supabase';
 
 const DATA_URL_PREFIX = /^data:(image\/[a-zA-Z0-9.+-]+);base64,/;
 
@@ -37,6 +37,7 @@ export const uploadBlobToBucket = async (
   blob: Blob,
   contentType: string
 ): Promise<string> => {
+  const supabase = await getSupabase();
   const { error } = await supabase.storage
     .from(bucket)
     .upload(filePath, blob, { contentType, upsert: false });
@@ -46,8 +47,7 @@ export const uploadBlobToBucket = async (
     throw error;
   }
 
-  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
-  return data.publicUrl;
+  return getSupabaseStoragePublicUrl(bucket, filePath);
 };
 
 export const uploadDataUrlToBucket = async (
@@ -67,6 +67,7 @@ export const uploadFileToBucket = async (
 ): Promise<string> => {
   const extension = getExtensionFromMime(file.type || '');
   const filePath = `${filePathBase}.${extension}`;
+  const supabase = await getSupabase();
   const { error } = await supabase.storage
     .from(bucket)
     .upload(filePath, file, { contentType: file.type, upsert: false });
@@ -76,6 +77,5 @@ export const uploadFileToBucket = async (
     throw error;
   }
 
-  const { data } = supabase.storage.from(bucket).getPublicUrl(filePath);
-  return data.publicUrl;
+  return getSupabaseStoragePublicUrl(bucket, filePath);
 };

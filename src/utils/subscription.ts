@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 
 const STRIPE_PRICE_ID = import.meta.env.VITE_STRIPE_PRICE_ID;
 const STRIPE_MODE = import.meta.env.VITE_STRIPE_MODE === 'test' ? 'test' : 'live';
@@ -33,6 +33,7 @@ export function isSubscriptionPortalSessionRecoveryError(error: unknown) {
 }
 
 async function getAuthHeaders() {
+  const supabase = await getSupabase();
   const { data, error } = await supabase.auth.getSession();
 
   if (error) {
@@ -129,6 +130,7 @@ export async function createCheckoutSessionUrl(userId: string, accessToken?: str
   }
 
   const headers = await resolveAuthHeaders(accessToken);
+  const supabase = await getSupabase();
 
   const { data, error } = await supabase.functions.invoke('create-checkout-session', {
     headers,
@@ -148,6 +150,7 @@ export async function createCheckoutSessionUrl(userId: string, accessToken?: str
 
 export async function createPortalSessionUrl(accessToken?: string) {
   const headers = await resolveAuthHeaders(accessToken);
+  const supabase = await getSupabase();
   const { data, error, response } = await supabase.functions.invoke('create-portal-session', {
     headers,
     body: {

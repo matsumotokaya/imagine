@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
-import { supabase } from '../utils/supabase';
+import { getSupabase } from '../utils/supabase';
 import { useProfile } from '../hooks/useProfile';
 import { queryClient } from '../lib/queryClient';
 
@@ -41,33 +41,60 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const { data: profileData, isLoading: profileLoading } = useProfile(user?.id);
 
   useEffect(() => {
-    // Get initial session
-    console.log('[AuthContext] Getting initial session...');
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('[AuthContext] Got session:', session);
-      setSession(session);
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
-    }).catch((error) => {
-      console.error('[AuthContext] Error getting session:', error);
-      setAuthLoading(false);
-    });
+    let isActive = true;
+    let unsubscribe: (() => void) | undefined;
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setAuthLoading(false);
-    });
+    const bootstrapAuth = async () => {
+      try {
+        const supabase = await getSupabase();
 
-    return () => subscription.unsubscribe();
+        if (!isActive) {
+          return;
+        }
+
+        console.log('[AuthContext] Getting initial session...');
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!isActive) {
+          return;
+        }
+
+        console.log('[AuthContext] Got session:', session);
+        setSession(session);
+        setUser(session?.user ?? null);
+        setAuthLoading(false);
+
+        const {
+          data: { subscription },
+        } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+          setSession(nextSession);
+          setUser(nextSession?.user ?? null);
+          setAuthLoading(false);
+        });
+
+        unsubscribe = () => subscription.unsubscribe();
+      } catch (error) {
+        if (!isActive) {
+          return;
+        }
+
+        console.error('[AuthContext] Error getting session:', error);
+        setAuthLoading(false);
+      }
+    };
+
+    bootstrapAuth();
+
+    return () => {
+      isActive = false;
+      unsubscribe?.();
+    };
   }, []);
 
   const oauthRedirectTo = `${window.location.origin}/auth/callback`;
 
   const signInWithGoogle = async () => {
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -80,6 +107,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const signInWithApple = async () => {
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'apple',
       options: {
@@ -92,11 +120,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const signInWithEmail = async (email: string, password: string) => {
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error?.message || null };
   };
 
   const signUpWithEmail = async (email: string, password: string) => {
+    const supabase = await getSupabase();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -111,6 +141,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const resetPassword = async (email: string) => {
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/callback`,
     });
@@ -118,11 +149,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const updatePassword = async (password: string) => {
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.updateUser({ password });
     return { error: error?.message || null };
   };
 
   const signOut = async () => {
+    const supabase = await getSupabase();
     const { error } = await supabase.auth.signOut({ scope: 'local' });
     if (error) {
       console.error('Error signing out:', error.message);

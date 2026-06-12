@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo, type RefObject } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo, type RefObject } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import debounce from 'lodash.debounce';
@@ -7,7 +7,6 @@ import { Sidebar } from '../components/Sidebar';
 import { PropertyPanel } from '../components/PropertyPanel';
 import { BottomBar } from '../components/BottomBar';
 import { MobileToolbar } from '../components/MobileToolbar';
-import { Canvas, type CanvasRef } from '../components/Canvas';
 import { UpgradeModal } from '../components/UpgradeModal';
 import { DesktopRecommendedModal } from '../components/DesktopRecommendedModal';
 import { SaveAsTemplateModal } from '../components/SaveAsTemplateModal';
@@ -19,12 +18,15 @@ import { useZoomControl } from '../hooks/useZoomControl';
 import { useElementOperations } from '../hooks/useElementOperations';
 import { useAuth } from '../contexts/AuthContext';
 import { isDataUrlImage, uploadDataUrlToBucket, uploadFileToBucket } from '../utils/storage';
-import { supabase } from '../utils/supabase';
+import { getSupabase } from '../utils/supabase';
 import { templateStorage } from '../utils/templateStorage';
 import { exportImageFromDataUrl } from '../utils/exportImage';
 import { createSilhouetteBlob } from '../utils/imageShadow';
 import { useEntranceAnimation } from '../hooks/useEntranceAnimation';
 import { LoadingOverlay } from '../components/canvas/LoadingOverlay';
+import type { CanvasRef } from '../components/Canvas';
+
+const EditorCanvas = lazy(() => import('../components/Canvas').then((module) => ({ default: module.Canvas })));
 
 export const BannerEditor = () => {
   const { id } = useParams<{ id: string }>();
@@ -898,6 +900,7 @@ export const BannerEditor = () => {
         // Register metadata to user_images table so it appears in Uploads tab
         const storagePath = finalSrc.split('/user-images/')[1];
         if (storagePath) {
+          const supabase = await getSupabase();
           await supabase.from('user_images').insert({
             user_id: user.id,
             name: `image-${Date.now()}`,
@@ -953,6 +956,7 @@ export const BannerEditor = () => {
       // Register metadata to user_images table so it appears in Uploads tab
       const storagePath = publicUrl.split('/user-images/')[1];
       if (storagePath) {
+        const supabase = await getSupabase();
         await supabase.from('user_images').insert({
           user_id: user.id,
           name: file.name,
@@ -1251,6 +1255,7 @@ export const BannerEditor = () => {
 
       const storagePath = publicUrl.split('/user-images/')[1];
       if (storagePath) {
+        const supabase = await getSupabase();
         await supabase.from('user_images').insert({
           user_id: user.id,
           name: 'shadow.png',
@@ -1496,27 +1501,29 @@ export const BannerEditor = () => {
           }}
         >
           <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, cursor: isPanning ? 'grabbing' : 'default', pointerEvents: panMode ? 'none' : 'auto' }} className="relative">
-            <Canvas
-                ref={canvasRef}
-                template={banner.template}
-                elements={elements}
-                scale={safeZoom / 100}
-                canvasColor={canvasColor}
-                fileName={`${banner.name}.png`}
-                onTextChange={handleTextChange}
-                selectedElementIds={selectedElementIds}
-                onSelectElement={handleSelectElement}
-                onElementUpdate={handleElementUpdate}
-                onElementsUpdate={handleElementsUpdate}
-                onImageDrop={handleImageDrop}
-                onImageLoad={handleImageLoad}
-                entranceAnimationPhase={animationPhase}
-                textPlacementMode={textPlacementMode}
-                onPlaceText={handleCanvasPlaceText}
-                onEditingChange={setIsCanvasEditing}
-                onBackgroundTouchStart={handleCanvasPanTouchStart}
-                onTransformingChange={handleTransformingChange}
-              />
+            <Suspense fallback={<div className="h-[320px] w-[320px] rounded-2xl border border-white/10 bg-[#202020]" />}>
+              <EditorCanvas
+                  ref={canvasRef}
+                  template={banner.template}
+                  elements={elements}
+                  scale={safeZoom / 100}
+                  canvasColor={canvasColor}
+                  fileName={`${banner.name}.png`}
+                  onTextChange={handleTextChange}
+                  selectedElementIds={selectedElementIds}
+                  onSelectElement={handleSelectElement}
+                  onElementUpdate={handleElementUpdate}
+                  onElementsUpdate={handleElementsUpdate}
+                  onImageDrop={handleImageDrop}
+                  onImageLoad={handleImageLoad}
+                  entranceAnimationPhase={animationPhase}
+                  textPlacementMode={textPlacementMode}
+                  onPlaceText={handleCanvasPlaceText}
+                  onEditingChange={setIsCanvasEditing}
+                  onBackgroundTouchStart={handleCanvasPanTouchStart}
+                  onTransformingChange={handleTransformingChange}
+                />
+            </Suspense>
             {(animationPhase === 'loading' || animationPhase === 'animating') && (
               <LoadingOverlay
                 elements={elements}
@@ -1612,27 +1619,29 @@ export const BannerEditor = () => {
           }}
         >
           <div style={{ transform: `translate(${panOffset.x}px, ${panOffset.y}px)`, cursor: isPanning ? 'grabbing' : 'default', pointerEvents: panMode ? 'none' : 'auto' }} className="relative">
-            <Canvas
-                ref={canvasRef}
-                template={banner.template}
-                elements={elements}
-                scale={safeZoom / 100}
-                canvasColor={canvasColor}
-                fileName={`${banner.name}.png`}
-                onTextChange={handleTextChange}
-                selectedElementIds={selectedElementIds}
-                onSelectElement={handleSelectElement}
-                onElementUpdate={handleElementUpdate}
-                onElementsUpdate={handleElementsUpdate}
-                onImageDrop={handleImageDrop}
-                onImageLoad={handleImageLoad}
-                entranceAnimationPhase={animationPhase}
-                textPlacementMode={textPlacementMode}
-                onPlaceText={handleCanvasPlaceText}
-                onEditingChange={setIsCanvasEditing}
-                onBackgroundTouchStart={handleCanvasPanTouchStart}
-                onTransformingChange={handleTransformingChange}
-              />
+            <Suspense fallback={<div className="h-[320px] w-[320px] rounded-2xl border border-white/10 bg-[#202020]" />}>
+              <EditorCanvas
+                  ref={canvasRef}
+                  template={banner.template}
+                  elements={elements}
+                  scale={safeZoom / 100}
+                  canvasColor={canvasColor}
+                  fileName={`${banner.name}.png`}
+                  onTextChange={handleTextChange}
+                  selectedElementIds={selectedElementIds}
+                  onSelectElement={handleSelectElement}
+                  onElementUpdate={handleElementUpdate}
+                  onElementsUpdate={handleElementsUpdate}
+                  onImageDrop={handleImageDrop}
+                  onImageLoad={handleImageLoad}
+                  entranceAnimationPhase={animationPhase}
+                  textPlacementMode={textPlacementMode}
+                  onPlaceText={handleCanvasPlaceText}
+                  onEditingChange={setIsCanvasEditing}
+                  onBackgroundTouchStart={handleCanvasPanTouchStart}
+                  onTransformingChange={handleTransformingChange}
+                />
+            </Suspense>
             {(animationPhase === 'loading' || animationPhase === 'animating') && (
               <LoadingOverlay
                 elements={elements}

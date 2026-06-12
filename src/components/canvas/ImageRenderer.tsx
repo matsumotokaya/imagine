@@ -67,8 +67,8 @@ const ImageRendererComponent = ({
 
           console.log('Loading Supabase image:', { bucketName, storagePath });
 
-          // Import supabase dynamically
-          const { supabase } = await import('../../utils/supabase');
+          const { getSupabase } = await import('../../utils/supabase');
+          const supabase = await getSupabase();
           const { data, error } = await supabase.storage.from(bucketName).download(storagePath);
 
           if (error) {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../utils/supabase';
+import { getSupabase } from '../utils/supabase';
 
 export interface AdminStats {
   totalUsers: number;
@@ -17,6 +17,7 @@ export const adminStatsKeys = {
 };
 
 async function fetchAdminStats(): Promise<AdminStats> {
+  const supabase = await getSupabase();
   const { data, error } = await supabase.rpc('get_admin_stats');
 
   if (error) {

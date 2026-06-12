@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '../utils/supabase';
+import { getSupabase } from '../utils/supabase';
 
 interface UserProfile {
   id: string;
@@ -23,6 +23,7 @@ export const profileKeys = {
 async function fetchProfile(userId: string): Promise<UserProfile> {
   try {
     console.log('[useProfile] Fetching profile from Supabase for userId:', userId);
+    const supabase = await getSupabase();
 
     const { data, error } = await supabase
       .from('profiles')

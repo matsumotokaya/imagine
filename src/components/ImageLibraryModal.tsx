@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { supabase } from '../utils/supabase';
+import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
 import type { DefaultImage, UserImage } from '../types/image-library';
 
 interface ImageLibraryModalProps {
@@ -35,6 +35,7 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
   // Check if current user is admin
   useEffect(() => {
     const checkAdmin = async () => {
+      const supabase = await getSupabase();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setIsAdmin(false); return; }
 
@@ -67,6 +68,7 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
     if (!isOpen) return;
 
     const fetchImages = async () => {
+      const supabase = await getSupabase();
       setLoading(true);
       const offset = currentPage * PAGE_SIZE;
       const to = offset + PAGE_SIZE - 1;
@@ -144,6 +146,7 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
       return;
     }
 
+    const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       alert(t('modal:imageLibrary.loginRequired'));
@@ -235,14 +238,13 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
       return urlCacheRef.current.get(cacheKey)!;
     }
 
-    const { data } = supabase.storage.from(bucketName).getPublicUrl(storagePath);
-    urlCacheRef.current.set(cacheKey, data.publicUrl);
-    return data.publicUrl;
+    const publicUrl = getSupabaseStoragePublicUrl(bucketName, storagePath);
+    urlCacheRef.current.set(cacheKey, publicUrl);
+    return publicUrl;
   };
 
   const getPublicUrl = (storagePath: string, bucketName: 'default-images' | 'user-images'): string => {
-    const { data } = supabase.storage.from(bucketName).getPublicUrl(storagePath);
-    return data.publicUrl;
+    return getSupabaseStoragePublicUrl(bucketName, storagePath);
   };
 
   const handleSelectDefaultImage = (image: DefaultImageWithUrl) => {

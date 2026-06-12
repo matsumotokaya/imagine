@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 import type { CanvasElement, TemplateRecord } from '../types/template';
 
 interface DbTemplate {
@@ -31,6 +31,7 @@ const dbToTemplate = (db: DbTemplate): TemplateRecord => ({
 
 export const templateStorage = {
   async getPublicTemplates(): Promise<TemplateRecord[]> {
+    const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('templates')
       .select('id, name, canvas_color, thumbnail_url, plan_type, display_order, width, height, updated_at, like_count, open_count')
@@ -46,6 +47,7 @@ export const templateStorage = {
   },
 
   async getById(id: string): Promise<TemplateRecord | null> {
+    const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('templates')
       .select('*')
@@ -70,6 +72,7 @@ export const templateStorage = {
     width: number;
     height: number;
   }): Promise<string | null> {
+    const supabase = await getSupabase();
     const { data, error } = await supabase
       .from('templates')
       .insert({
@@ -101,6 +104,7 @@ export const templateStorage = {
       displayOrder?: number | null;
     }
   ): Promise<void> {
+    const supabase = await getSupabase();
     const updates: Record<string, unknown> = {};
     if (params.name !== undefined) updates.name = params.name;
     if (params.planType !== undefined) updates.plan_type = params.planType;
@@ -118,6 +122,7 @@ export const templateStorage = {
   },
 
   async deleteTemplate(id: string): Promise<void> {
+    const supabase = await getSupabase();
     const { error } = await supabase
       .from('templates')
       .delete()
@@ -130,6 +135,7 @@ export const templateStorage = {
   },
 
   async incrementOpenCount(templateId: string): Promise<void> {
+    const supabase = await getSupabase();
     await supabase.rpc('increment_template_open_count', {
       template_id: templateId,
     });
@@ -138,6 +144,7 @@ export const templateStorage = {
   async updateDisplayOrders(
     orders: { id: string; displayOrder: number }[]
   ): Promise<void> {
+    const supabase = await getSupabase();
     // Update each template's display_order
     const promises = orders.map(({ id, displayOrder }) =>
       supabase

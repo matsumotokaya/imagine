@@ -1,8 +1,9 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 
 export const likeStorage = {
   // Fetch all liked template IDs for the current user
   async getUserLikes(): Promise<string[]> {
+    const supabase = await getSupabase();
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -23,6 +24,7 @@ export const likeStorage = {
 
   // Toggle like on a template (add or remove)
   async toggleLike(templateId: string): Promise<{ liked: boolean }> {
+    const supabase = await getSupabase();
     const {
       data: { user },
     } = await supabase.auth.getUser();
