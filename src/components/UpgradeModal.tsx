@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { createCheckoutSessionUrl } from '../utils/subscription';
@@ -11,6 +12,7 @@ interface UpgradeModalProps {
 export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
   const { t } = useTranslation(['modal', 'message', 'common']);
   const { user, session } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -18,6 +20,7 @@ export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
   const handleUpgrade = async () => {
     if (!user) {
       alert(t('message:error.loginRequired'));
+      navigate(`/auth?redirect=${encodeURIComponent('/upgrade')}`);
       return;
     }
 

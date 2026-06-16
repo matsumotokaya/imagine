@@ -1,6 +1,11 @@
 import { getSupabase, getSupabaseStoragePublicUrl } from './supabase';
 
 const DATA_URL_PREFIX = /^data:(image\/[a-zA-Z0-9.+-]+);base64,/;
+const PUBLIC_OBJECT_PATH_SEGMENT = '/storage/v1/object/public/';
+
+interface UploadOptions {
+  upsert?: boolean;
+}
 
 const getExtensionFromMime = (mimeType: string): string => {
   if (mimeType === 'image/jpeg') return 'jpg';
@@ -35,12 +40,16 @@ export const uploadBlobToBucket = async (
   bucket: string,
   filePath: string,
   blob: Blob,
-  contentType: string
+  contentType: string,
+  options: UploadOptions = {}
 ): Promise<string> => {
   const supabase = await getSupabase();
   const { error } = await supabase.storage
     .from(bucket)
-    .upload(filePath, blob, { contentType, upsert: false });
+    .upload(filePath, blob, {
+      contentType,
+      upsert: options.upsert ?? false,
+    });
 
   if (error) {
     console.error('Storage upload failed:', error);
@@ -53,24 +62,29 @@ export const uploadBlobToBucket = async (
 export const uploadDataUrlToBucket = async (
   dataUrl: string,
   bucket: string,
-  filePathBase: string
+  filePathBase: string,
+  options: UploadOptions = {}
 ): Promise<string> => {
   const { blob, mimeType, extension } = dataUrlToBlob(dataUrl);
   const filePath = `${filePathBase}.${extension}`;
-  return uploadBlobToBucket(bucket, filePath, blob, mimeType);
+  return uploadBlobToBucket(bucket, filePath, blob, mimeType, options);
 };
 
 export const uploadFileToBucket = async (
   file: File,
   bucket: string,
-  filePathBase: string
+  filePathBase: string,
+  options: UploadOptions = {}
 ): Promise<string> => {
   const extension = getExtensionFromMime(file.type || '');
   const filePath = `${filePathBase}.${extension}`;
   const supabase = await getSupabase();
   const { error } = await supabase.storage
     .from(bucket)
-    .upload(filePath, file, { contentType: file.type, upsert: false });
+    .upload(filePath, file, {
+      contentType: file.type,
+      upsert: options.upsert ?? false,
+    });
 
   if (error) {
     console.error('Storage upload failed:', error);
@@ -78,4 +92,52 @@ export const uploadFileToBucket = async (
   }
 
   return getSupabaseStoragePublicUrl(bucket, filePath);
+};
+
+export const appendCacheBust = (url: string, version?: string | null): string => {
+  if (!version) return url;
+
+  const [base, hash] = url.split('#', 2);
+  const separator = base.includes('?') ? '&' : '?';
+  const versionedUrl = `${base}${separator}v=${encodeURIComponent(version)}`;
+  return hash ? `${versionedUrl}#${hash}` : versionedUrl;
+};
+
+export const extractStoragePathFromPublicUrl = (
+  publicUrl: string,
+  bucket: string
+): string | null => {
+  try {
+    const url = new URL(publicUrl);
+    const objectPathIndex = url.pathname.indexOf(PUBLIC_OBJECT_PATH_SEGMENT);
+    if (objectPathIndex === -1) {
+      return null;
+    }
+
+    const objectPath = url.pathname.slice(objectPathIndex + PUBLIC_OBJECT_PATH_SEGMENT.length);
+    if (!objectPath.startsWith(`${bucket}/`)) {
+      return null;
+    }
+
+    const encodedStoragePath = objectPath.slice(bucket.length + 1);
+    return encodedStoragePath
+      .split('/')
+      .map((segment) => decodeURIComponent(segment))
+      .join('/');
+  } catch {
+    return null;
+  }
+};
+
+export const removeFilesFromBucket = async (bucket: string, filePaths: string[]): Promise<void> => {
+  const uniquePaths = [...new Set(filePaths.filter(Boolean))];
+  if (uniquePaths.length === 0) return;
+
+  const supabase = await getSupabase();
+  const { error } = await supabase.storage.from(bucket).remove(uniquePaths);
+
+  if (error) {
+    console.error('Storage remove failed:', error);
+    throw error;
+  }
 };

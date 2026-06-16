@@ -32,6 +32,7 @@ CREATE TABLE banners (
   canvas_color text DEFAULT '#FFFFFF',
   thumbnail_data_url text, -- Deprecated (Base64)
   thumbnail_url text, -- Supabase Storage URL
+  fullres_url text, -- Supabase Storage URL for downloadable PNG
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
 );
@@ -178,10 +179,12 @@ CREATE TABLE user_images (
 - **Upload**: Authenticated users
 - **Path**: `user-images/{user_id}/{filename}`
 
-### `thumbnails`
-- **Access**: Public read
+### Banner preview assets (`user-images`)
+- **Access**: Public read with RLS
 - **Upload**: Authenticated users
-- **Path**: `thumbnails/{user_id}/{banner_id}.jpg`
+- **Thumbnail path**: `user-images/{user_id}/thumbnails/{banner_id}.jpg`
+- **Download path**: `user-images/{user_id}/downloads/{banner_id}.png`
+- **Behavior**: Fixed paths with overwrite (`upsert`) so each banner keeps only the latest thumbnail and latest download asset
 
 ## Indexes
 
@@ -250,6 +253,11 @@ CREATE TRIGGER on_auth_user_created
 - Old field: `thumbnail_data_url` (Base64 string)
 - New field: `thumbnail_url` (Storage public URL)
 - Migration script: `src/scripts/migrate-thumbnail-data-url.js`
+
+### Banner asset overwrite mode (2026-06-16)
+- Added `fullres_url` to `banners`
+- Banner thumbnails and downloadable assets now overwrite fixed Storage paths
+- Cleanup script: `scripts/cleanup-banner-assets.js`
 
 ### Element Structure Evolution
 - **v1**: Separate `textElements`, `shapeElements`, `imageElements` arrays

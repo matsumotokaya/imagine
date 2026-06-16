@@ -9,7 +9,7 @@
     "upgradeComingSoon": "업그레이드 기능 준비 중입니다",
     "upgradeError": "업그레이드에 실패했습니다. 다시 시도해 주세요.",
     "saveFailed": "저장에 실패했습니다",
-    "imageLoginRequired": "이미지를 추가하려면 로그인이 필요합니다.",
+    "imageLoginRequired": "게스트 무료 모드에서는 이미지 업로드를 사용할 수 없습니다. 로그인하면 업로드할 수 있습니다.",
     "imageUploadFailed": "이미지 업로드에 실패했습니다."
   },
   "success": {

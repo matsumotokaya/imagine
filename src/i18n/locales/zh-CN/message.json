@@ -9,7 +9,7 @@
     "upgradeComingSoon": "升级功能即将推出",
     "upgradeError": "升级失败，请重试。",
     "saveFailed": "保存失败",
-    "imageLoginRequired": "添加图片需要登录。",
+    "imageLoginRequired": "访客免费模式下无法上传图片。登录后即可上传。",
     "imageUploadFailed": "图片上传失败。"
   },
   "success": {

@@ -20,6 +20,7 @@ import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates';
 import type { BannerListItem, CanvasElement, Template } from '../types/template';
 import { useAuth } from '../contexts/AuthContext';
 import { SIZE_CATEGORIES, filterBySize, getAspectClass, getGridCols } from '../utils/sizeCategories';
+import { downloadImageFromUrl } from '../utils/exportImage';
 
 const MAX_DISPLAY_COUNT = 10;
 
@@ -62,6 +63,7 @@ export const BannerManager = () => {
         updatedAt?: string;
         createdAt?: string;
         thumbnailUrl?: string;
+        fullresUrl?: string;
       };
       console.log('[BannerManager] Guest banner loaded - name:', parsed.name, 'hasThumbnail:', !!parsed.thumbnailUrl, 'thumbnailLength:', parsed.thumbnailUrl?.length || 0);
       setGuestBanner({
@@ -69,6 +71,7 @@ export const BannerManager = () => {
         name: parsed.name || parsed.template?.name || 'Guest Banner',
         updatedAt: parsed.updatedAt || parsed.createdAt || new Date().toISOString(),
         thumbnailUrl: parsed.thumbnailUrl,
+        fullresUrl: parsed.fullresUrl,
         width: parsed.template?.width,
         height: parsed.template?.height,
       });
@@ -153,6 +156,20 @@ export const BannerManager = () => {
       return;
     }
     navigate(`/banner/${banner.id}`);
+  };
+
+  const handleDownloadBanner = async (banner: BannerListItem) => {
+    if (!banner.fullresUrl) {
+      alert(t('banner:downloadUnavailable'));
+      return;
+    }
+
+    try {
+      await downloadImageFromUrl(banner.fullresUrl, `${banner.name}.png`);
+    } catch (error) {
+      console.error('Failed to download banner asset:', error);
+      alert(t('message:error.exportFailed'));
+    }
   };
 
   const displayedBanners = isGuest ? (guestBanner ? [guestBanner] : []) : banners;
@@ -293,8 +310,23 @@ export const BannerManager = () => {
           </div>
 
           {/* Action buttons overlay (top right) */}
-          {!isGuest && (
-            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute top-2 right-2 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleDownloadBanner(banner);
+              }}
+              disabled={!banner.fullresUrl}
+              className="w-7 h-7 bg-white/90 hover:bg-white text-gray-700 rounded-md transition-colors flex items-center justify-center group/download relative shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              title={banner.fullresUrl ? t('banner:download') : t('banner:downloadUnavailable')}
+            >
+              <span className="material-symbols-outlined text-[16px]">download</span>
+              <span className="absolute bottom-full mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover/download:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                {banner.fullresUrl ? t('banner:download') : t('banner:downloadUnavailable')}
+              </span>
+            </button>
+            {!isGuest && (
+              <>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -323,8 +355,9 @@ export const BannerManager = () => {
                   {t('banner:delete')}
                 </span>
               </button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       </div>
     );

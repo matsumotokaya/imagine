@@ -9,7 +9,7 @@
     "upgradeComingSoon": "アップグレード機能は準備中です",
     "upgradeError": "アップグレードに失敗しました。もう一度お試しください。",
     "saveFailed": "保存に失敗しました",
-    "imageLoginRequired": "画像を追加するにはログインが必要です。",
+    "imageLoginRequired": "フリープランのゲスト利用では画像アップロードはできません。ログインするとアップロードできます。",
     "imageUploadFailed": "画像のアップロードに失敗しました。",
     "subscriptionPortalFailed": "サブスクリプション管理を開けませんでした。もう一度お試しください。"
   },

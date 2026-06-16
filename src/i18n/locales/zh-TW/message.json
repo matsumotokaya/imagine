@@ -9,7 +9,7 @@
     "upgradeComingSoon": "升級功能即將推出",
     "upgradeError": "升級失敗，請重試。",
     "saveFailed": "儲存失敗",
-    "imageLoginRequired": "新增圖片需要登入。",
+    "imageLoginRequired": "訪客免費模式下無法上傳圖片。登入後即可上傳。",
     "imageUploadFailed": "圖片上傳失敗。"
   },
   "success": {

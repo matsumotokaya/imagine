@@ -20,7 +20,7 @@
 
 ### 1. 商品・価格の作成
 - Products > Add product
-- 価格設定: Recurring（月額 $8.00）
+- 価格設定: Recurring（月額 $3.00）
 - **Price ID** をコピー（`price_xxx`）
 
 ### 2. Webhookエンドポイント設定
@@ -111,7 +111,7 @@ const STRIPE_PRICE_ID = import.meta.env.VITE_STRIPE_PRICE_ID;
 | 環境 | Price ID |
 |------|----------|
 | Test (Sandbox) | `price_1SgTcWLhSi3I8k5ljpx47yjl` |
-| Live (Production) | `price_1T0kiNQ2eK2Q8eWb4OQhcvJo` |
+| Live (Production) | `price_1ThWnuQ2eK2Q8eWbgAEh4fwE` |
 
 ## Webhook エンドポイント（Live）
 

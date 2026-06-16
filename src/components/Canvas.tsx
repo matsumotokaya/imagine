@@ -126,61 +126,72 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(function Canvas(
       }
 
       const stage = stageRef.current;
-
-      // Save current transformer state and hide all transformers before export
-      const wasTransformerVisible = transformerRefsMap.current.size > 0;
-      transformerRefsMap.current.forEach(tr => tr.nodes([]));
-      if (multiTransformerRef.current) multiTransformerRef.current.nodes([]);
-
-      // Force redraw to ensure all elements are rendered
       const layers = stage.getLayers();
-      if (layers.length > 0) {
-        layers[0].batchDraw();
-      } else {
+      if (layers.length === 0) {
         console.error('Export failed: no layers found');
         return '';
       }
 
-      // Export at original resolution (not scaled)
-      // pixelRatio should be inverse of scale to get original size
-      // e.g., if scale=0.5 (50%), pixelRatio=2 to get 100% size output
-      try {
-        const dataURL = stage.toDataURL({
-          x: BLEED * scale,
-          y: BLEED * scale,
-          width: template.width * scale,
-          height: template.height * scale,
-          pixelRatio: 1 / scale,
-          mimeType: 'image/png',
-          quality: 1
+      const restoreSelection = () => {
+        if (isEditing) return;
+
+        selectedElementIds.forEach(id => {
+          const tr = transformerRefsMap.current.get(id);
+          const node = nodesRef.current.get(id);
+          if (tr && node) tr.nodes([node]);
         });
 
-        console.log('Export dataURL length:', dataURL?.length || 0);
-
-        // Restore individual transformers after export
-        if (wasTransformerVisible && !isEditing) {
-          selectedElementIds.forEach(id => {
-            const tr = transformerRefsMap.current.get(id);
-            const node = nodesRef.current.get(id);
-            if (tr && node) tr.nodes([node]);
-          });
-          // Restore multi transformer
-          if (selectedElementIds.length > 1 && multiTransformerRef.current) {
-            const selectedNodes = selectedElementIds
-              .map(id => nodesRef.current.get(id))
-              .filter((node): node is Konva.Node => !!node);
-            multiTransformerRef.current.nodes(selectedNodes);
-          }
-          if (layers.length > 0) {
-            layers[0].batchDraw();
-          }
+        if (selectedElementIds.length > 1 && multiTransformerRef.current) {
+          const selectedNodes = selectedElementIds
+            .map(id => nodesRef.current.get(id))
+            .filter((node): node is Konva.Node => !!node);
+          multiTransformerRef.current.nodes(selectedNodes);
         }
 
-        return dataURL;
-      } catch (error) {
-        console.error('Export failed with error:', error);
-        return '';
-      }
+        layers[0].batchDraw();
+      };
+
+      const exportStage = (
+        options: {
+          mimeType: string;
+          quality: number;
+          pixelRatio: number;
+        },
+        errorPrefix: string
+      ) => {
+        transformerRefsMap.current.forEach(tr => tr.nodes([]));
+        if (multiTransformerRef.current) multiTransformerRef.current.nodes([]);
+
+        layers[0].batchDraw();
+
+        try {
+          const dataURL = stage.toDataURL({
+            x: BLEED * scale,
+            y: BLEED * scale,
+            width: template.width * scale,
+            height: template.height * scale,
+            pixelRatio: options.pixelRatio,
+            mimeType: options.mimeType,
+            quality: options.quality,
+          });
+
+          restoreSelection();
+          return dataURL;
+        } catch (error) {
+          restoreSelection();
+          console.error(`${errorPrefix}:`, error);
+          return '';
+        }
+      };
+
+      const dataURL = exportStage({
+        mimeType: 'image/png',
+        quality: 1,
+        pixelRatio: 1 / scale,
+      }, 'Export failed with error');
+
+      console.log('Export dataURL length:', dataURL?.length || 0);
+      return dataURL;
     },
     exportThumbnail: () => {
       if (!stageRef.current) {
@@ -189,30 +200,40 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(function Canvas(
       }
 
       const stage = stageRef.current;
-
-      // Hide all transformers before export
-      transformerRefsMap.current.forEach(tr => tr.nodes([]));
-      if (multiTransformerRef.current) multiTransformerRef.current.nodes([]);
-
       const layers = stage.getLayers();
-      if (layers.length > 0) {
-        layers[0].batchDraw();
-      } else {
+      if (layers.length === 0) {
         console.error('Thumbnail export failed: no layers found');
         return '';
       }
 
+      const restoreSelection = () => {
+        if (isEditing) return;
+
+        selectedElementIds.forEach(id => {
+          const tr = transformerRefsMap.current.get(id);
+          const node = nodesRef.current.get(id);
+          if (tr && node) tr.nodes([node]);
+        });
+
+        if (selectedElementIds.length > 1 && multiTransformerRef.current) {
+          const selectedNodes = selectedElementIds
+            .map(id => nodesRef.current.get(id))
+            .filter((node): node is Konva.Node => !!node);
+          multiTransformerRef.current.nodes(selectedNodes);
+        }
+
+        layers[0].batchDraw();
+      };
+
       try {
-        // Calculate thumbnail size (max 400px width, maintain aspect ratio)
         const originalWidth = template.width;
         const maxThumbnailWidth = 400;
         const thumbnailScale = maxThumbnailWidth / originalWidth;
-
-        // pixelRatio to get thumbnail size from scaled canvas
-        // Current display: originalWidth * scale
-        // Target: maxThumbnailWidth = originalWidth * thumbnailScale
-        // So pixelRatio = thumbnailScale / scale
         const pixelRatio = thumbnailScale / scale;
+
+        transformerRefsMap.current.forEach(tr => tr.nodes([]));
+        if (multiTransformerRef.current) multiTransformerRef.current.nodes([]);
+        layers[0].batchDraw();
 
         const dataURL = stage.toDataURL({
           x: BLEED * scale,
@@ -221,13 +242,14 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(function Canvas(
           height: template.height * scale,
           pixelRatio,
           mimeType: 'image/jpeg',
-          quality: 0.7
+          quality: 0.7,
         });
 
+        restoreSelection();
         console.log('Thumbnail dataURL length:', dataURL?.length || 0, 'pixelRatio:', pixelRatio);
-
         return dataURL;
       } catch (error) {
+        restoreSelection();
         console.error('Thumbnail export failed with error:', error);
         return '';
       }

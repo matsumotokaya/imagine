@@ -95,6 +95,7 @@ export interface Banner {
   elements: CanvasElement[];
   canvasColor: string;
   thumbnailUrl?: string;
+  fullresUrl?: string;
 }
 
 export interface BannerListItem {
@@ -102,6 +103,7 @@ export interface BannerListItem {
   name: string;
   updatedAt: string;
   thumbnailUrl?: string;
+  fullresUrl?: string;
   width?: number;
   height?: number;
   displayOrder?: number;

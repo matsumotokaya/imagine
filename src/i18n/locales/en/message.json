@@ -9,7 +9,7 @@
     "upgradeComingSoon": "Upgrade feature coming soon",
     "upgradeError": "Upgrade failed. Please try again.",
     "saveFailed": "Save failed",
-    "imageLoginRequired": "Login required to add images.",
+    "imageLoginRequired": "Image upload is not available in guest free mode. Log in to enable uploads.",
     "imageUploadFailed": "Image upload failed.",
     "subscriptionPortalFailed": "Could not open subscription management. Please try again."
   },

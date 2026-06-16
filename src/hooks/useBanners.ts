@@ -110,30 +110,17 @@ export function useBatchSaveBanner(id: string) {
       elements?: CanvasElement[];
       canvasColor?: string;
       thumbnailDataURL?: string;
+      fullresDataURL?: string;
     }) => {
       console.log('[useBatchSaveBanner] Saving to DB...', updates);
-      await bannerStorage.batchSave(id, updates);
+      const savedBanner = await bannerStorage.batchSave(id, updates);
       console.log('[useBatchSaveBanner] Save complete');
-      return updates;
+      return savedBanner;
     },
-    onSuccess: (updates) => {
+    onSuccess: (savedBanner) => {
       console.log('[useBatchSaveBanner] 💾 Save successful.');
-      console.log('[useBatchSaveBanner] Updates:', {
-        hasElements: !!updates.elements,
-        elementsCount: updates.elements?.length,
-        hasCanvasColor: !!updates.canvasColor,
-        hasThumbnail: !!updates.thumbnailDataURL,
-        thumbnailPrefix: updates.thumbnailDataURL?.substring(0, 80),
-      });
-
-      // Update the detail cache directly to maintain local state
-      const currentBanner = queryClient.getQueryData<Banner>(bannerKeys.detail(id));
-      if (currentBanner) {
-        queryClient.setQueryData<Banner>(bannerKeys.detail(id), {
-          ...currentBanner,
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        });
+      if (savedBanner) {
+        queryClient.setQueryData<Banner>(bannerKeys.detail(id), savedBanner);
       }
 
       // Invalidate banner list to refresh thumbnails on list page

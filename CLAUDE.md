@@ -1,5 +1,14 @@
 # CLAUDE.md - WHATIF プロジェクト仕様
 
+## AGENTS Priority
+
+`/Users/kaya.matsumoto/projects/banalist/AGENTS.md` をこのリポジトリの正本として優先する。
+
+- GitHub アカウント運用
+- push / PR 前の確認事項
+
+は、まず `AGENTS.md` を確認する。
+
 最終更新: 2025-11-19
 
 ## 📌 プロジェクト概要

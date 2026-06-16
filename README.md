@@ -57,7 +57,7 @@ npm run build
 ### User Management
 - **Authentication**: Google / Apple / Email via Supabase
 - **Roles**: `admin` | `user`
-- **Subscription**: `free` | `premium` ($8/month via Stripe)
+- **Subscription**: `free` | `premium` ($3/month via Stripe)
 
 ### Admin Features
 - **Admin Dashboard** (`/admin`): Storage usage monitoring, user/content stats, Supabase Free plan limits
@@ -73,8 +73,12 @@ npm run build
 - **Image Libraries**: User library (private) + Default library (public)
 
 ### Export
-- PNG export at original resolution
-- JPEG thumbnails (400px, 70% quality)
+- PNG export at original resolution from the editor
+- Saved preview assets per banner:
+  - `thumbnail_url`: JPEG thumbnail (400px, 70% quality)
+  - `fullres_url`: PNG download asset at canvas resolution
+- The saved download asset reuses the same PNG export path as the editor download action
+- Both saved assets use fixed Storage paths with overwrite semantics, so old revisions do not accumulate
 
 ## Project Structure
 
@@ -97,7 +101,7 @@ Create `.env.local` for local development:
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_STRIPE_MODE=live
-VITE_STRIPE_PRICE_ID=price_xxx
+VITE_STRIPE_PRICE_ID=price_1ThWnuQ2eK2Q8eWbgAEh4fwE
 VITE_THE_CLUB_R2_BASE_URL=https://pub-9339dc326a024891a297479881e66962.r2.dev
 ```
 
@@ -111,7 +115,7 @@ For production (Vercel), set these in Project Settings → Environment Variables
 
 ### Core Tables
 - **`profiles`**: User metadata (role, subscription_tier, full_name, avatar_url)
-- **`banners`**: User banner data (elements as JSONB, canvas_color, thumbnail_url)
+- **`banners`**: User banner data (elements as JSONB, canvas_color, thumbnail_url, fullres_url)
 - **`templates`**: Public templates (elements, plan_type: free/premium)
 - **`default_images`**: Default image library metadata
 - **`user_images`**: User image library metadata

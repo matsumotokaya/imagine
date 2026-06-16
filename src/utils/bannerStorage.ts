@@ -1,7 +1,19 @@
 import { getSupabase } from './supabase';
 import { cacheManager } from './cacheManager';
 import type { Banner, BannerListItem, CanvasElement, Template, TemplateRecord } from '../types/template';
-import { uploadDataUrlToBucket } from './storage';
+import {
+  appendCacheBust,
+  extractStoragePathFromPublicUrl,
+  removeFilesFromBucket,
+  uploadDataUrlToBucket,
+} from './storage';
+
+const BANNER_ASSET_BUCKET = 'user-images';
+
+const getBannerThumbnailFileBase = (userId: string, bannerId: string) => `${userId}/thumbnails/${bannerId}`;
+const getBannerDownloadFileBase = (userId: string, bannerId: string) => `${userId}/downloads/${bannerId}`;
+const versionAssetUrl = (url: string | null | undefined, updatedAt: string) =>
+  url ? appendCacheBust(url, updatedAt) : undefined;
 
 interface DbBanner {
   id: string;
@@ -12,6 +24,7 @@ interface DbBanner {
   canvas_color: string;
   thumbnail_data_url?: string | null;
   thumbnail_url?: string | null;
+  fullres_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -21,6 +34,7 @@ interface DbBannerListItem {
   name: string;
   thumbnail_data_url?: string | null;
   thumbnail_url?: string | null;
+  fullres_url?: string | null;
   updated_at: string;
   template?: { width?: number; height?: number } | null;
   display_order?: number | null;
@@ -33,7 +47,8 @@ const dbToBanner = (db: DbBanner): Banner => ({
   template: db.template,
   elements: db.elements,
   canvasColor: db.canvas_color,
-  thumbnailUrl: db.thumbnail_url || db.thumbnail_data_url || undefined,
+  thumbnailUrl: versionAssetUrl(db.thumbnail_url || db.thumbnail_data_url, db.updated_at),
+  fullresUrl: versionAssetUrl(db.fullres_url, db.updated_at),
   createdAt: db.created_at,
   updatedAt: db.updated_at,
 });
@@ -41,7 +56,8 @@ const dbToBanner = (db: DbBanner): Banner => ({
 const dbToBannerListItem = (db: DbBannerListItem): BannerListItem => ({
   id: db.id,
   name: db.name,
-  thumbnailUrl: db.thumbnail_url || db.thumbnail_data_url || undefined,
+  thumbnailUrl: versionAssetUrl(db.thumbnail_url || db.thumbnail_data_url, db.updated_at),
+  fullresUrl: versionAssetUrl(db.fullres_url, db.updated_at),
   updatedAt: db.updated_at,
   width: db.template?.width,
   height: db.template?.height,
@@ -105,7 +121,7 @@ export const bannerStorage = {
     // RLS policy handles access control: public banners OR own banners
     const { data, error } = await supabase
       .from('banners')
-      .select('id, name, thumbnail_url, updated_at, template, display_order')
+      .select('id, name, thumbnail_url, fullres_url, updated_at, template, display_order')
       .order('display_order', { ascending: true });
 
     if (error) {
@@ -192,10 +208,10 @@ export const bannerStorage = {
   },
 
   // Update banner
-  async update(id: string, updates: Partial<Omit<Banner, 'id' | 'createdAt'>>): Promise<void> {
+  async update(id: string, updates: Partial<Omit<Banner, 'id' | 'createdAt'>>): Promise<Banner | null> {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) return null;
 
     const dbUpdates: any = {};
     if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -203,19 +219,24 @@ export const bannerStorage = {
     if (updates.elements !== undefined) dbUpdates.elements = updates.elements;
     if (updates.canvasColor !== undefined) dbUpdates.canvas_color = updates.canvasColor;
     if (updates.thumbnailUrl !== undefined) dbUpdates.thumbnail_url = updates.thumbnailUrl;
+    if (updates.fullresUrl !== undefined) dbUpdates.fullres_url = updates.fullresUrl;
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('banners')
       .update(dbUpdates)
       .eq('id', id)
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .select('*')
+      .single();
 
     if (error) {
       console.error('Error updating banner:', error);
+      return null;
     } else {
       // Invalidate cache for this banner and the list
       cacheManager.invalidate(`banner:${id}`);
       cacheManager.invalidate(`banners:all:${user.id}`);
+      return data ? dbToBanner(data) : null;
     }
   },
 
@@ -224,6 +245,13 @@ export const bannerStorage = {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+
+     const { data: existingBanner } = await supabase
+      .from('banners')
+      .select('thumbnail_url, fullres_url')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
     const { error } = await supabase
       .from('banners')
@@ -234,6 +262,19 @@ export const bannerStorage = {
     if (error) {
       console.error('Error deleting banner:', error);
     } else {
+      const storagePaths = [
+        extractStoragePathFromPublicUrl(existingBanner?.thumbnail_url ?? '', BANNER_ASSET_BUCKET),
+        extractStoragePathFromPublicUrl(existingBanner?.fullres_url ?? '', BANNER_ASSET_BUCKET),
+      ].filter((path): path is string => Boolean(path));
+
+      if (storagePaths.length > 0) {
+        try {
+          await removeFilesFromBucket(BANNER_ASSET_BUCKET, storagePaths);
+        } catch (storageError) {
+          console.warn('Failed to remove banner assets:', storageError);
+        }
+      }
+
       // Invalidate cache
       cacheManager.invalidate(`banner:${id}`);
       cacheManager.invalidate(`banners:all:${user.id}`);
@@ -260,7 +301,8 @@ export const bannerStorage = {
         template: original.template,
         elements: JSON.parse(JSON.stringify(original.elements)),
         canvas_color: original.canvasColor,
-        thumbnail_url: original.thumbnailUrl || null,
+        thumbnail_url: null,
+        fullres_url: null,
         display_order: 1,
       })
       .select()
@@ -292,8 +334,10 @@ export const bannerStorage = {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const fileBase = `${user.id}/thumbnails/${id}-${Date.now()}`;
-    const publicUrl = await uploadDataUrlToBucket(thumbnailDataURL, 'user-images', fileBase);
+    const fileBase = getBannerThumbnailFileBase(user.id, id);
+    const publicUrl = await uploadDataUrlToBucket(thumbnailDataURL, BANNER_ASSET_BUCKET, fileBase, {
+      upsert: true,
+    });
     await this.update(id, { thumbnailUrl: publicUrl });
   },
 
@@ -304,26 +348,69 @@ export const bannerStorage = {
       elements?: CanvasElement[];
       canvasColor?: string;
       thumbnailDataURL?: string;
+      fullresDataURL?: string;
     }
-  ): Promise<void> {
+  ): Promise<Banner | null> {
     const supabase = await getSupabase();
     // Only update if there are actual changes
-    if (Object.keys(updates).length === 0) return;
-    if (updates.thumbnailDataURL) {
+    if (Object.keys(updates).length === 0) return null;
+    if (updates.thumbnailDataURL || updates.fullresDataURL) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const fileBase = `${user.id}/thumbnails/${id}-${Date.now()}`;
-        const publicUrl = await uploadDataUrlToBucket(updates.thumbnailDataURL, 'user-images', fileBase);
-        await this.update(id, {
+        const { data: currentAssets } = await supabase
+          .from('banners')
+          .select('thumbnail_url, fullres_url')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .single();
+
+        const nextThumbnailUrl = updates.thumbnailDataURL
+          ? await uploadDataUrlToBucket(
+              updates.thumbnailDataURL,
+              BANNER_ASSET_BUCKET,
+              getBannerThumbnailFileBase(user.id, id),
+              { upsert: true }
+            )
+          : undefined;
+
+        const nextFullresUrl = updates.fullresDataURL
+          ? await uploadDataUrlToBucket(
+              updates.fullresDataURL,
+              BANNER_ASSET_BUCKET,
+              getBannerDownloadFileBase(user.id, id),
+              { upsert: true }
+            )
+          : undefined;
+
+        const savedBanner = await this.update(id, {
           elements: updates.elements,
           canvasColor: updates.canvasColor,
-          thumbnailUrl: publicUrl,
+          thumbnailUrl: nextThumbnailUrl,
+          fullresUrl: nextFullresUrl,
         });
-        return;
+
+        const staleAssetPaths = [
+          currentAssets?.thumbnail_url && nextThumbnailUrl && currentAssets.thumbnail_url !== nextThumbnailUrl
+            ? extractStoragePathFromPublicUrl(currentAssets.thumbnail_url, BANNER_ASSET_BUCKET)
+            : null,
+          currentAssets?.fullres_url && nextFullresUrl && currentAssets.fullres_url !== nextFullresUrl
+            ? extractStoragePathFromPublicUrl(currentAssets.fullres_url, BANNER_ASSET_BUCKET)
+            : null,
+        ].filter((path): path is string => Boolean(path));
+
+        if (staleAssetPaths.length > 0) {
+          try {
+            await removeFilesFromBucket(BANNER_ASSET_BUCKET, staleAssetPaths);
+          } catch (storageError) {
+            console.warn('Failed to clean up stale banner assets:', storageError);
+          }
+        }
+
+        return savedBanner;
       }
     }
 
-    await this.update(id, {
+    return this.update(id, {
       elements: updates.elements,
       canvasColor: updates.canvasColor,
     });

@@ -1,5 +1,5 @@
 import { useState, type SyntheticEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Header } from '../components/Header';
@@ -10,12 +10,15 @@ import { Footer } from '../components/Footer';
 import { SortableGrid } from '../components/SortableGrid';
 import { LikeButton } from '../components/LikeButton';
 import { DemoCanvas } from '../components/DemoCanvas';
+import { GuestLimitModal } from '../components/GuestLimitModal';
+import { TemplateWallpaperExporter } from '../components/TemplateWallpaperExporter';
 import { useTemplates, templateKeys } from '../hooks/useTemplates';
 import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates';
 import type { Template, TemplateRecord } from '../types/template';
 import { useAuth } from '../contexts/AuthContext';
 import { THE_CLUB_ENTRY_URL, THE_CLUB_THUMBNAILS } from '../data/theClubThumbnails';
 import { bannerStorage } from '../utils/bannerStorage';
+import { hasGuestDesignConflict, isPremiumTemplate } from '../utils/guestDesign';
 import { templateStorage } from '../utils/templateStorage';
 import { SIZE_CATEGORIES, filterBySize, getAspectClass, getGridCols } from '../utils/sizeCategories';
 
@@ -48,15 +51,16 @@ export const TemplateGallery = () => {
   const { t } = useTranslation(['banner', 'common', 'message', 'auth', 'modal']);
   const [templateImageLoadingStates, setTemplateImageLoadingStates] = useState<Record<string, boolean>>({});
   const [templateActionId, setTemplateActionId] = useState<string | null>(null);
+  const [templateDownloadId, setTemplateDownloadId] = useState<string | null>(null);
+  const [downloadTemplate, setDownloadTemplate] = useState<TemplateRecord | null>(null);
+  const [pendingGuestTemplate, setPendingGuestTemplate] = useState<TemplateRecord | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<TemplateRecord | null>(null);
   const navigate = useNavigate();
-  const location = useLocation();
   const queryClient = useQueryClient();
   const { user, profile } = useAuth();
   const isGuest = !user;
   const isAdmin = profile?.role === 'admin';
-  const guestTemplateId = 'd9c4fee2-8e9c-4703-a507-57f3bde5d2b3';
   const clubThumbnailPreviews = THE_CLUB_THUMBNAILS.slice(0, MAX_CLUB_THUMBNAILS);
 
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
@@ -105,10 +109,6 @@ export const TemplateGallery = () => {
   };
 
   const handleTemplateClick = async (template: TemplateRecord) => {
-    const isGuestAllowed = isGuest && template.id === guestTemplateId;
-    if (isGuest && !isGuestAllowed) {
-      return;
-    }
     const resolvedTemplate = template.elements
       ? template
       : await templateStorage.getById(template.id);
@@ -117,7 +117,13 @@ export const TemplateGallery = () => {
       return;
     }
 
-    if (!isGuestAllowed && resolvedTemplate.planType === 'premium') {
+    const guestAllowed = !isPremiumTemplate(resolvedTemplate);
+    if (isGuest && !guestAllowed) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    if (isPremiumTemplate(resolvedTemplate)) {
       if (!user || !profile || profile.subscriptionTier === 'free') {
         setShowUpgradeModal(true);
         return;
@@ -131,6 +137,11 @@ export const TemplateGallery = () => {
     const templateElements = JSON.parse(JSON.stringify(resolvedTemplate.elements || []));
 
     if (!user) {
+      if (hasGuestDesignConflict(resolvedTemplate.id)) {
+        setPendingGuestTemplate(resolvedTemplate);
+        return;
+      }
+
       navigate('/banner', {
         state: {
           template: editorTemplate,
@@ -154,6 +165,32 @@ export const TemplateGallery = () => {
     }
   };
 
+  const handleTemplateWallpaperDownload = async (template: TemplateRecord) => {
+    const resolvedTemplate = template.elements
+      ? template
+      : await templateStorage.getById(template.id);
+    if (!resolvedTemplate?.elements) {
+      alert(t('banner:templateLoadFailed'));
+      return;
+    }
+
+    const guestAllowed = !isPremiumTemplate(resolvedTemplate);
+    if (isGuest && !guestAllowed) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    if (isPremiumTemplate(resolvedTemplate)) {
+      if (!user || !profile || profile.subscriptionTier === 'free') {
+        setShowUpgradeModal(true);
+        return;
+      }
+    }
+
+    setTemplateDownloadId(template.id);
+    setDownloadTemplate(resolvedTemplate);
+  };
+
   // Render a single template card
   const renderTemplateCard = (template: TemplateRecord) => {
     const aspectClass = getAspectClass(template.width, template.height);
@@ -164,9 +201,7 @@ export const TemplateGallery = () => {
         className="group bg-white rounded-lg border border-gray-200 hover:border-indigo-400 hover:shadow-lg transition-all overflow-hidden"
       >
         <div
-          className={`${aspectClass} bg-gray-100 relative overflow-hidden ${
-            isGuest ? 'cursor-default' : 'cursor-pointer'
-          }`}
+          className={`${aspectClass} bg-gray-100 relative overflow-hidden cursor-pointer`}
           onClick={() => handleTemplateClick(template)}
         >
           {template.thumbnailUrl ? (
@@ -228,10 +263,14 @@ export const TemplateGallery = () => {
               </span>
             </div>
           </div>
-          <div className="absolute top-2 right-2 z-10">
+          <div
+            className="absolute top-2 right-2 z-10"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             <LikeButton templateId={template.id} likeCount={template.likeCount ?? 0} />
           </div>
-          {isGuest && template.id !== guestTemplateId && (
+          {isGuest && isPremiumTemplate(template) && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="bg-black/60 text-white h-16 w-16 rounded-full shadow-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-[40px]">lock</span>
@@ -240,42 +279,39 @@ export const TemplateGallery = () => {
           )}
 
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            {isGuest && template.id !== guestTemplateId ? (
-              <div className="flex flex-col items-center gap-3 text-center">
-                <p className="text-white text-xs font-semibold">{t('banner:unlockWithLogin')}</p>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                className="w-28 py-2 bg-white/95 text-gray-900 text-xs font-semibold rounded shadow-sm hover:bg-white"
+                disabled={templateActionId === template.id}
+              >
+                {templateActionId === template.id
+                  ? t('common:status.creating')
+                  : t('banner:open')}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleTemplateWallpaperDownload(template);
+                }}
+                className="w-28 py-2 bg-indigo-600/95 text-white text-xs font-semibold rounded shadow-sm hover:bg-indigo-500 disabled:opacity-50"
+                disabled={templateDownloadId === template.id}
+              >
+                {templateDownloadId === template.id
+                  ? t('common:status.loading')
+                  : t('banner:wallpaperDownload')}
+              </button>
+              {isAdmin && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate('/auth?redirect=' + encodeURIComponent(location.pathname));
+                    setEditingTemplate(template);
                   }}
-                  className="w-28 py-2 bg-white/95 text-gray-900 text-xs font-semibold rounded shadow-sm"
+                  className="w-28 py-2 bg-gray-900 text-white text-xs font-semibold rounded shadow-sm hover:bg-gray-800"
                 >
-                  {t('auth:login')}
+                  {t('modal:editTemplate.editButton')}
                 </button>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center gap-2">
-                <button
-                  className="w-28 py-2 bg-white/95 text-gray-900 text-xs font-semibold rounded shadow-sm hover:bg-white"
-                  disabled={templateActionId === template.id}
-                >
-                  {templateActionId === template.id
-                    ? t('common:status.creating')
-                    : t('banner:open')}
-                </button>
-                {isAdmin && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingTemplate(template);
-                    }}
-                    className="w-28 py-2 bg-gray-900 text-white text-xs font-semibold rounded shadow-sm hover:bg-gray-800"
-                  >
-                    {t('modal:editTemplate.editButton')}
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent p-3 pt-8">
@@ -461,6 +497,51 @@ export const TemplateGallery = () => {
         )}
       </main>
 
+      <TemplateWallpaperExporter
+        template={downloadTemplate}
+        onComplete={(result) => {
+          if (result.isIOS && result.method !== 'share-files') {
+            alert(t('message:info.saveImageGuide'));
+          }
+          if (result.inAppBrowser) {
+            alert(t('message:info.inAppBrowserGuide'));
+          }
+          setTemplateDownloadId(null);
+          setDownloadTemplate(null);
+        }}
+        onError={(error) => {
+          if (error.name !== 'AbortError') {
+            alert(t('message:error.exportFailed'));
+          }
+          setTemplateDownloadId(null);
+          setDownloadTemplate(null);
+        }}
+      />
+      <GuestLimitModal
+        isOpen={!!pendingGuestTemplate}
+        onClose={() => setPendingGuestTemplate(null)}
+        title={t('banner:guestLimitTitle')}
+        message={t('banner:guestOverwriteConfirm')}
+        cancelLabel={t('common:button.cancel')}
+        confirmLabel={t('banner:open')}
+        onConfirm={() => {
+          if (!pendingGuestTemplate) return;
+
+          const editorTemplate = buildEditorTemplate(pendingGuestTemplate);
+          const templateElements = JSON.parse(JSON.stringify(pendingGuestTemplate.elements || []));
+
+          setPendingGuestTemplate(null);
+          navigate('/banner', {
+            state: {
+              template: editorTemplate,
+              elements: templateElements,
+              canvasColor: pendingGuestTemplate.canvasColor,
+              name: pendingGuestTemplate.name,
+              templateId: pendingGuestTemplate.id,
+            },
+          });
+        }}
+      />
       <UpgradeModal isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
       <EditTemplateModal
         isOpen={!!editingTemplate}

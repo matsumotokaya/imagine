@@ -39,6 +39,22 @@ const sanitizeFileName = (fileName: string) => {
   return cleaned.length > 0 ? cleaned : 'banner.png';
 };
 
+const getExtensionFromMimeType = (mimeType: string) => {
+  if (mimeType === 'image/png') return 'png';
+  if (mimeType === 'image/jpeg') return 'jpg';
+  if (mimeType === 'image/webp') return 'webp';
+  return null;
+};
+
+const applyMimeExtension = (fileName: string, mimeType: string) => {
+  const safeFileName = sanitizeFileName(fileName);
+  const extension = getExtensionFromMimeType(mimeType);
+  if (!extension) return safeFileName;
+
+  const withoutExtension = safeFileName.replace(/\.[a-z0-9]+$/i, '');
+  return `${withoutExtension}.${extension}`;
+};
+
 const triggerDownload = (href: string, fileName: string) => {
   try {
     const link = document.createElement('a');
@@ -57,6 +73,18 @@ const triggerDownload = (href: string, fileName: string) => {
 const dataUrlToBlob = async (dataURL: string) => {
   const response = await fetch(dataURL);
   return response.blob();
+};
+
+export const downloadImageFromUrl = async (url: string, fileName: string): Promise<void> => {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch download asset: ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  triggerDownload(blobUrl, applyMimeExtension(fileName, blob.type));
+  window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
 };
 
 export const exportImageFromDataUrl = async (dataURL: string, fileName: string): Promise<ExportImageResult> => {

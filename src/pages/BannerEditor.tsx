@@ -17,6 +17,7 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { useZoomControl } from '../hooks/useZoomControl';
 import { useElementOperations } from '../hooks/useElementOperations';
 import { useAuth } from '../contexts/AuthContext';
+import { GUEST_STORAGE_KEY } from '../utils/guestDesign';
 import { isDataUrlImage, uploadDataUrlToBucket, uploadFileToBucket } from '../utils/storage';
 import { getSupabase } from '../utils/supabase';
 import { templateStorage } from '../utils/templateStorage';
@@ -39,7 +40,7 @@ export const BannerEditor = () => {
   const [isCanvasEditing, setIsCanvasEditing] = useState(false);
   const [showSaveAsTemplateModal, setShowSaveAsTemplateModal] = useState(false);
   const isGuest = !id;
-  const guestStorageKey = 'banalist_guest_banner';
+  const guestStorageKey = GUEST_STORAGE_KEY;
 
   const [guestTemplate, setGuestTemplate] = useState<Template | null>(null);
   const [guestName, setGuestName] = useState<string>('');
@@ -146,6 +147,11 @@ export const BannerEditor = () => {
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const wasPanningRef = useRef(false);
+
+  const redirectToLoginForGuest = useCallback(() => {
+    const redirectPath = id ? `/banner/${id}` : '/banner';
+    navigate(`/auth?redirect=${encodeURIComponent(redirectPath)}`);
+  }, [id, navigate]);
 
   const handlePanMouseDown = useCallback((e: React.MouseEvent) => {
     if (isTransforming) return;
@@ -471,10 +477,12 @@ export const BannerEditor = () => {
       setLastSaveError(null);
       try {
         let thumbnailDataURL: string | undefined;
+        let fullresDataURL: string | undefined;
         if (generateThumbnail && canvasRef.current && elements.length > 0) {
           console.log('[BannerEditor Guest] Generating thumbnail...');
           await new Promise(resolve => setTimeout(resolve, 100));
           thumbnailDataURL = canvasRef.current.exportThumbnail();
+          fullresDataURL = canvasRef.current.exportImage();
           console.log('[BannerEditor Guest] Thumbnail generated:', thumbnailDataURL ? `${thumbnailDataURL.substring(0, 50)}... (length: ${thumbnailDataURL.length})` : 'NONE');
         } else {
           console.log('[BannerEditor Guest] Skipping thumbnail generation - generateThumbnail:', generateThumbnail, 'hasCanvas:', !!canvasRef.current, 'elementsCount:', elements.length);
@@ -489,8 +497,12 @@ export const BannerEditor = () => {
           updatedAt,
           createdAt: guestCreatedAtRef.current,
           thumbnailUrl: thumbnailDataURL,
+          fullresUrl: fullresDataURL,
         };
-        console.log('[BannerEditor Guest] Saving to localStorage with thumbnail:', !!thumbnailDataURL);
+        console.log('[BannerEditor Guest] Saving to localStorage with assets:', {
+          hasThumbnail: !!thumbnailDataURL,
+          hasFullres: !!fullresDataURL,
+        });
         localStorage.setItem(guestStorageKey, JSON.stringify(snapshot));
         setGuestUpdatedAt(updatedAt);
         setHasUnsavedChanges(false);
@@ -511,28 +523,35 @@ export const BannerEditor = () => {
 
     try {
       let thumbnailDataURL: string | undefined;
+      let fullresDataURL: string | undefined;
 
-      // Only generate thumbnail for manual saves or periodically
       if (generateThumbnail && canvasRef.current && elements.length > 0) {
-        console.log('[BannerEditor] 🎨 GENERATING THUMBNAIL (JPEG 400px)...');
+        console.log('[BannerEditor] 🎨 GENERATING PREVIEW ASSETS...');
         await new Promise(resolve => setTimeout(resolve, 100));
         thumbnailDataURL = canvasRef.current.exportThumbnail();
-        console.log('[BannerEditor] 🎨 Thumbnail generated, length:', thumbnailDataURL?.length || 0);
+        fullresDataURL = canvasRef.current.exportImage();
+        console.log('[BannerEditor] 🎨 Assets generated:', {
+          thumbnailLength: thumbnailDataURL?.length || 0,
+          fullresLength: fullresDataURL?.length || 0,
+        });
       } else {
-        console.log('[BannerEditor] ⏭️  SKIPPING thumbnail generation (generateThumbnail:', generateThumbnail, ', hasCanvas:', !!canvasRef.current, ', elementsCount:', elements.length, ')');
+        console.log('[BannerEditor] ⏭️  SKIPPING asset generation (generateThumbnail:', generateThumbnail, ', hasCanvas:', !!canvasRef.current, ', elementsCount:', elements.length, ')');
       }
 
-      // Save to database
-      console.log('[BannerEditor] Calling batchSave with', elements.length, 'elements, hasThumbnail:', !!thumbnailDataURL);
+      console.log('[BannerEditor] Calling batchSave with', elements.length, 'elements, assets:', {
+        hasThumbnail: !!thumbnailDataURL,
+        hasFullres: !!fullresDataURL,
+      });
       await batchSave.mutateAsync({
         elements,
         canvasColor,
         thumbnailDataURL,
+        fullresDataURL,
       });
 
       setHasUnsavedChanges(false);
       setSaveStatus('saved');
-      console.log('[BannerEditor] ✅ Save successful (with thumbnail:', !!thumbnailDataURL, ')');
+      console.log('[BannerEditor] ✅ Save successful');
     } catch (error) {
       console.error('[BannerEditor] Save failed:', error);
       setSaveStatus('error');
@@ -891,6 +910,7 @@ export const BannerEditor = () => {
     if (isDataUrlImage(src)) {
       if (!user) {
         alert(t('message:error.imageLoginRequired'));
+        redirectToLoginForGuest();
         return;
       }
       try {
@@ -945,6 +965,7 @@ export const BannerEditor = () => {
     const newId = `image-${Date.now()}-${Math.random()}`;
     if (!user) {
       alert(t('message:error.imageLoginRequired'));
+      redirectToLoginForGuest();
       return;
     }
 
@@ -1243,6 +1264,7 @@ export const BannerEditor = () => {
 
     if (!user) {
       alert(t('message:error.imageLoginRequired'));
+      redirectToLoginForGuest();
       return;
     }
 

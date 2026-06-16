@@ -10,6 +10,15 @@ interface ReleaseEntry {
 
 const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    date: 'June 16, 2026',
+    items: [
+      'Free templates and wallpaper downloads are now easier to use without logging in',
+      'Guests now see clearer guidance when a feature requires login, such as Likes or premium-only content',
+      'Template and design lists now include direct wallpaper download actions',
+      'The login page was updated with a simpler layout and clearer plan explanations for Guest, Member, and Premium Member',
+    ],
+  },
+  {
     date: 'April 18, 2026',
     items: [
       'Added a premium-only wallpaper preview section under the template gallery with a latest-50 snapshot from The Club thumbnails',
