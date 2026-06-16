@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { PublicPageLayout } from '../components/PublicPageLayout';
 
 export function Contact() {
   const { t } = useTranslation('common');
@@ -52,23 +52,12 @@ export function Contact() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto px-4 py-12">
-        {/* Header */}
-        <div className="mb-8">
-          <Link to="/" className="text-blue-600 hover:text-blue-700 mb-4 inline-block">
-            {t('contact.backToHome')}
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900">
-            {t('contact.title')}
-          </h1>
-          <p className="text-gray-600 mt-2">
-            {t('contact.description')}
-          </p>
-        </div>
-
-        {/* Content */}
-        <div className="bg-white rounded-lg shadow-sm p-8">
+    <PublicPageLayout
+      title={t('contact.title')}
+      description={t('contact.description')}
+      maxWidthClassName="max-w-3xl"
+      contentClassName="p-8"
+    >
           {status === 'success' && (
             <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
               <h3 className="font-semibold text-green-900 mb-1">{t('contact.successTitle')}</h3>
@@ -178,8 +167,6 @@ export function Contact() {
               {t('contact.businessHoursNote')}
             </p>
           </div>
-        </div>
-      </div>
-    </div>
+    </PublicPageLayout>
   );
 }

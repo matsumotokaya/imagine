@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import { EnglishContent } from './content/EnglishContent';
 import { JapaneseContent } from './content/JapaneseContent';
 import { KoreanContent } from './content/KoreanContent';
 import { ChineseSimplifiedContent } from './content/ChineseSimplifiedContent';
 import { ChineseTraditionalContent } from './content/ChineseTraditionalContent';
+import { PublicPageLayout } from '../../components/PublicPageLayout';
+import { resolvePageLanguage } from '../../utils/pageLanguage';
 
 export function AboutUs() {
   const { i18n } = useTranslation();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const pageLanguage = resolvePageLanguage(i18n.resolvedLanguage ?? i18n.language);
 
   const ContentComponent = {
     'en': EnglishContent,
@@ -17,79 +19,66 @@ export function AboutUs() {
     'ko': KoreanContent,
     'zh-CN': ChineseSimplifiedContent,
     'zh-TW': ChineseTraditionalContent,
-  }[i18n.language] || EnglishContent;
+  }[pageLanguage] || EnglishContent;
 
-  const getTitle = () => {
-    switch (i18n.language) {
-      case 'ja': return 'サービスについて';
-      case 'ko': return '서비스 소개';
-      case 'zh-CN': return '关于我们';
-      case 'zh-TW': return '關於我們';
-      default: return 'About Us';
-    }
-  };
+  const title = {
+    en: 'About Us',
+    ja: 'サービスについて',
+    ko: '서비스 소개',
+    'zh-CN': '关于我们',
+    'zh-TW': '關於我們',
+  }[pageLanguage];
 
-  const getBackText = () => {
-    switch (i18n.language) {
-      case 'ja': return 'ホームに戻る';
-      case 'ko': return '홈으로 돌아가기';
-      case 'zh-CN': return '返回首页';
-      case 'zh-TW': return '返回首頁';
-      default: return 'Back to Home';
-    }
-  };
+  const description = {
+    en: 'Learn more about IMAGINE and the creative work behind WHATIF.',
+    ja: 'IMAGINE のサービス概要と、WHATIF が制作しているクリエイティブについてご紹介します。',
+    ko: 'IMAGINE 서비스 개요와 WHATIF가 제작하는 크리에이티브를 소개합니다.',
+    'zh-CN': '介绍 IMAGINE 的服务概要，以及 WHATIF 正在创作的内容。',
+    'zh-TW': '介紹 IMAGINE 的服務概要，以及 WHATIF 正在創作的內容。',
+  }[pageLanguage];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-5xl mx-auto px-4 py-12">
-        {/* Header */}
-        <div className="mb-8">
-          <Link to="/" className="text-blue-600 hover:text-blue-700 mb-4 inline-block">
-            ← {getBackText()}
-          </Link>
-          <h1 className="text-sm font-medium text-gray-400 tracking-widest uppercase">
-            {getTitle()}
-          </h1>
-        </div>
+    <PublicPageLayout
+      title={title}
+      description={description}
+      maxWidthClassName="max-w-5xl"
+      contentClassName="space-y-12 px-6 py-10 md:px-10"
+    >
+      <ContentComponent
+        selectedImage={selectedImage}
+        setSelectedImage={setSelectedImage}
+      />
 
-        {/* Content */}
-        <div className="bg-white rounded-2xl shadow-sm px-6 py-10 md:px-10 space-y-12">
-          <ContentComponent
-            selectedImage={selectedImage}
-            setSelectedImage={setSelectedImage}
-          />
-        </div>
-      </div>
-
-      {/* Image Modal */}
       {selectedImage && (
         <div
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
           onClick={() => setSelectedImage(null)}
         >
-          <div className="relative max-w-7xl max-h-[90vh]">
+          <div className="relative max-h-[90vh] max-w-7xl">
             <button
+              type="button"
               onClick={() => setSelectedImage(null)}
-              className="absolute -top-10 right-0 text-white text-2xl hover:text-gray-300"
+              className="absolute -top-10 right-0 text-2xl text-white hover:text-gray-300"
+              aria-label="Close image preview"
             >
               ✕
             </button>
             <img
               src={selectedImage}
-              alt="拡大表示"
-              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              alt="Expanded view"
+              className="max-h-[90vh] max-w-full rounded-lg object-contain"
             />
           </div>
         </div>
       )}
-    </div>
+    </PublicPageLayout>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="border-b border-gray-200 pb-6 last:border-0">
-      <h2 className="text-xl font-semibold text-gray-900 mb-3">{title}</h2>
+      <h2 className="mb-3 text-xl font-semibold text-gray-900">{title}</h2>
       <div className="text-gray-700">{children}</div>
     </div>
   );
