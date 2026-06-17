@@ -71,7 +71,7 @@ npm run build
 - **Auto-save**: 3-second debounce with real-time status indicator
 - **Storage**: Supabase PostgreSQL (JSONB for elements)
 - **Guest Mode**: Single trial banner in localStorage
-- **Image Libraries**: User library (private) + Default library (public)
+- **Image Libraries**: User library (private uploads) + Default library (premium and official assets)
 
 ### Export
 - PNG export at original resolution from the editor
@@ -118,8 +118,8 @@ For production (Vercel), set these in Project Settings → Environment Variables
 - **`profiles`**: User metadata (role, subscription_tier, full_name, avatar_url)
 - **`banners`**: User banner data (elements as JSONB, canvas_color, thumbnail_url, fullres_url)
 - **`templates`**: Public templates (elements, plan_type: free/premium)
-- **`default_images`**: Default image library metadata
-- **`user_images`**: User image library metadata
+- **`default_images`**: Premium image library and official asset metadata
+- **`user_images`**: Private user image library metadata
 
 See [docs/DATABASE.md](docs/DATABASE.md) for full schema details.
 
@@ -132,9 +132,17 @@ See [docs/DATABASE.md](docs/DATABASE.md) for full schema details.
 
 ## Documentation
 
+- [Renewal Status](docs/RENEWAL_STATUS.md) - Current renewal focus, active library normalization work, and next-session priorities
+- [Schema Alignment](docs/SCHEMA_ALIGNMENT.md) - Production schema audit, canonical schema, and migration rollout order
+- [Production Projects](docs/PRODUCTION_PROJECTS.md) - Variant-level package model for Content Factory, editable banners, outputs, and delivery packages
 - [Development Guide](docs/DEVELOPMENT.md) - Architecture, conventions, adding features
 - [Performance Guide](docs/PERFORMANCE.md) - React Query cache settings, optimization history
 - [Database Schema](docs/DATABASE.md) - Full table definitions and RLS policies
+
+## Renewal Note
+
+Current renewal priority is not feature expansion first.  
+The immediate focus is `schema alignment + library normalization` so future Content Factory and wallpaper work can proceed on a stable base.
 
 ## i18n (Internationalization)
 

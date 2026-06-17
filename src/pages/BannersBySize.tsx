@@ -15,7 +15,7 @@ import {
 } from '../hooks/useBanners';
 import type { BannerListItem, CanvasElement, Template } from '../types/template';
 import { useAuth } from '../contexts/AuthContext';
-import { SIZE_CATEGORIES, filterBySize, getAspectClass, getGridCols } from '../utils/sizeCategories';
+import { filterBySize, getAspectClass, getGridCols, resolveSizeCategory } from '../utils/sizeCategories';
 import { downloadImageFromUrl } from '../utils/exportImage';
 
 export const BannersBySize = () => {
@@ -30,9 +30,6 @@ export const BannersBySize = () => {
   const isGuest = !user;
   const guestStorageKey = 'banalist_guest_banner';
   const [guestBanner, setGuestBanner] = useState<BannerListItem | null>(null);
-
-  // Find the current category
-  const category = SIZE_CATEGORIES.find((c) => c.key === sizeKey);
 
   // React Query hooks
   const { data: banners = [], isLoading } = useBanners();
@@ -155,6 +152,7 @@ export const BannersBySize = () => {
   };
 
   const displayedBanners = isGuest ? (guestBanner ? [guestBanner] : []) : banners;
+  const category = resolveSizeCategory(sizeKey, displayedBanners);
 
   // Filter banners by the current category size
   const filteredBanners = category

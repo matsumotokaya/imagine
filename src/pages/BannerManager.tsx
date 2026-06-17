@@ -19,7 +19,7 @@ import {
 import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates';
 import type { BannerListItem, CanvasElement, Template } from '../types/template';
 import { useAuth } from '../contexts/AuthContext';
-import { SIZE_CATEGORIES, filterBySize, getAspectClass, getGridCols } from '../utils/sizeCategories';
+import { filterBySize, getAspectClass, getAvailableSizeCategories, getGridCols } from '../utils/sizeCategories';
 import { downloadImageFromUrl } from '../utils/exportImage';
 
 const MAX_DISPLAY_COUNT = 10;
@@ -173,6 +173,7 @@ export const BannerManager = () => {
   };
 
   const displayedBanners = isGuest ? (guestBanner ? [guestBanner] : []) : banners;
+  const availableSizeCategories = getAvailableSizeCategories(displayedBanners);
 
   // Filter banners by size category
   const filterBannersBySize = (targetWidth: number, targetHeight: number) => {
@@ -399,7 +400,7 @@ export const BannerManager = () => {
           </div>
         ) : (
           <div className="space-y-10">
-            {SIZE_CATEGORIES.map((category) => {
+            {availableSizeCategories.map((category) => {
               const filteredBanners = filterBannersBySize(category.width, category.height);
               if (filteredBanners.length === 0) return null;
               const displayBanners = filteredBanners.slice(0, MAX_DISPLAY_COUNT);

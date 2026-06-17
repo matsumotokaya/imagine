@@ -6,6 +6,18 @@
 
 IMAGINE を `ユーザー向けデザインエディタ` から、WHATIF 公式作品の `制作工場` としても機能する構造に拡張する。
 
+## Current Execution Priority
+
+この計画は継続中だが、現在の最優先は `wallpaper build` そのものではなく、`library normalization` と `DB schema alignment`。
+
+理由:
+
+- Content Factory の入口は作れた
+- しかし、本番DBとコード前提のズレが残ると、以後の実装速度が落ちる
+- したがって、次の開発は `user_images / banners / templates` の canonical schema 整理から始める
+
+詳細は [RENEWAL_STATUS.md](./RENEWAL_STATUS.md) を参照。
+
 対象:
 
 - Instagram feed
@@ -121,8 +133,8 @@ IMAGINE に最初に必要なのは 6 項目。
 1. Content Factory で対象 `work / variant` を選ぶ
 2. キャラクター PNG をアップロードする
 3. そのアップロードは `episode 0500-1 の公式素材` として保存される
-4. システムが下書き project を作る
-5. その project から `portrait master` `landscape master` `feed` `cover` の起点を作る
+4. システムが `variant` 単位の production project を作る
+5. その project から `portrait master` `landscape master` `feed` `cover` の下書き banner を作る
 6. Human in the Loop で editor へ入り、背景色や構図を調整する
 7. 保存後、必要な出力を build する
 8. package 完成後、Gallery 側へ publish する
@@ -216,7 +228,8 @@ Character Asset
 
 重要なのは、`episode 0100-5 のキャラクター素材` だと分かること。
 
-初期実装では `user_images` を拡張し、`asset_scope = official` と作品 metadata でこの役割を持たせる。
+初期実装の方針は変更した。
+公式キャラクター素材は `user_images` に仮置きせず、`default_images` に作品 metadata 付きで直接登録する。
 
 ### 2. Production projects
 
@@ -445,9 +458,10 @@ QHD PNG は容量が重いので、保存先の役割を分けるべき。
 
 ## Recommended data model for IMAGINE
 
-### `official_assets`
+### `default_images` as official asset registry
 
 公式素材の正本。
+実装上は `default_images` をこの役割で拡張する。
 
 ```sql
 id uuid primary key
@@ -468,18 +482,16 @@ updated_at timestamptz
 
 制作案件。
 
-```sql
-id uuid primary key
-project_type text not null          -- wallpaper_pack
-work_series_slug text not null
-work_display_code text not null
-variant_number integer not null
-portrait_banner_id uuid
-landscape_banner_id uuid
-status text not null                -- draft / ready / published
-created_at timestamptz
-updated_at timestamptz
-```
+1 つの project が、`1 series / 1 work / 1 variant` を担当する。
+同じ作品の枝番一覧を見たいときは、`work_series_slug + work_number` で project を束ねる。
+
+主な列:
+
+- `work_series_slug`
+- `work_number`
+- `work_display_code`
+- `variant_number`
+- `status`
 
 ### `production_project_assets`
 
@@ -487,9 +499,9 @@ project に使う素材紐付け。
 
 ```sql
 project_id uuid not null
-official_asset_id uuid not null
+default_image_id uuid not null
 role text not null                  -- main_character / sub_character / logo
-primary key (project_id, official_asset_id)
+primary key (project_id, default_image_id)
 ```
 
 ### `production_output_recipes`
@@ -545,10 +557,10 @@ updated_at timestamptz
 
 自動化前の最初の運用はこれでよい。
 
-1. キャラクター PNG を `official_assets` 相当の置き場へ入れる
+1. キャラクター PNG を `default_images` に入れる
 2. `production_project` を作る
-3. portrait master を IMAGINE で作る
-4. landscape master を IMAGINE で作る
+3. `portrait_master / landscape_master / instagram_feed / package_cover` の下書き banner を作る
+4. 必要なら IMAGINE でそれぞれ調整する
 5. 通常保存では JSON + preview だけ保存する
 6. `Build outputs` で QHD と feed と cover を生成する
 7. HD は downscale 生成する
@@ -575,10 +587,10 @@ updated_at timestamptz
 
 IMAGINE 側で最初にやるべき準備はこの順。
 
-1. `official_assets` 相当の公式素材置き場を作る
+1. `default_images` を公式素材置き場として拡張する
 2. admin 用 `Content Factory` 画面を作る
 3. `production_projects` を作る
-4. `portrait master` / `landscape master` を project に紐づけられるようにする
+4. `portrait master` / `landscape master` / `feed` / `cover` の banner を project に紐づけられるようにする
 5. `working save` と `build outputs` を分離する
 6. `recipe` 定義を作る
 7. `QHD -> HD downscale` の export 処理を作る

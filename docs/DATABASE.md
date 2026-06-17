@@ -107,7 +107,7 @@ CREATE TABLE templates (
 ```
 
 ### `default_images`
-Default image library (curated by admins).
+Premium image library and official work asset registry (curated by admins).
 
 ```sql
 CREATE TABLE default_images (
@@ -117,13 +117,19 @@ CREATE TABLE default_images (
   width integer,
   height integer,
   file_size integer,
+  source_context text NOT NULL DEFAULT 'library',
+  work_series_slug text,
+  work_number integer,
+  variant_number integer,
+  asset_role text NOT NULL DEFAULT 'general',
   tags text[],
+  notes text,
   created_at timestamp with time zone DEFAULT now()
 );
 ```
 
 ### `user_images`
-User-uploaded images and admin-managed official work assets.
+Private user-uploaded images.
 
 ```sql
 CREATE TABLE user_images (
@@ -143,6 +149,101 @@ CREATE TABLE user_images (
   tags text[] NOT NULL DEFAULT '{}',
   notes text,
   created_at timestamp with time zone DEFAULT now()
+);
+```
+
+### `production_projects`
+Variant-level production packages for Content Factory.
+
+```sql
+CREATE TABLE production_projects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_type text NOT NULL DEFAULT 'variant_pack',
+  work_series_slug text NOT NULL,
+  work_number integer NOT NULL,
+  work_display_code text NOT NULL,
+  variant_number integer NOT NULL,
+  status text NOT NULL DEFAULT 'draft',
+  title text,
+  notes text,
+  created_by uuid REFERENCES profiles(id) ON DELETE SET NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  UNIQUE (project_type, work_series_slug, work_number, variant_number)
+);
+```
+
+### `production_project_assets`
+Official premium assets attached to a production project.
+
+```sql
+CREATE TABLE production_project_assets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES production_projects(id) ON DELETE CASCADE,
+  default_image_id uuid NOT NULL REFERENCES default_images(id) ON DELETE RESTRICT,
+  role text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_primary boolean NOT NULL DEFAULT false,
+  notes text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
+);
+```
+
+### `production_project_banners`
+Editable banners generated for a production project.
+
+```sql
+CREATE TABLE production_project_banners (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES production_projects(id) ON DELETE CASCADE,
+  banner_id uuid NOT NULL REFERENCES banners(id) ON DELETE CASCADE,
+  role text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  is_active boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
+);
+```
+
+### `production_outputs`
+Built delivery files derived from project banners.
+
+```sql
+CREATE TABLE production_outputs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL REFERENCES production_projects(id) ON DELETE CASCADE,
+  source_banner_id uuid REFERENCES banners(id) ON DELETE SET NULL,
+  role text NOT NULL,
+  storage_provider text NOT NULL DEFAULT 'supabase',
+  storage_bucket text,
+  storage_path text,
+  mime_type text,
+  file_size_bytes bigint,
+  width integer,
+  height integer,
+  status text NOT NULL DEFAULT 'preparing',
+  is_current boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
+);
+```
+
+### `production_delivery_packages`
+Sellable/downloadable package metadata for a project.
+
+```sql
+CREATE TABLE production_delivery_packages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id uuid NOT NULL UNIQUE REFERENCES production_projects(id) ON DELETE CASCADE,
+  cover_output_id uuid REFERENCES production_outputs(id) ON DELETE SET NULL,
+  status text NOT NULL DEFAULT 'draft',
+  price_usd numeric(10, 2),
+  is_subscription_included boolean NOT NULL DEFAULT true,
+  gallery_offer_ref text,
+  published_at timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
 );
 ```
 
@@ -169,12 +270,20 @@ CREATE TABLE user_images (
 - **Read**: Public read access
 - **Insert**: Admin only
 - **Delete**: Admin only
+- **Admin usage**: Content Factory uploads official premium assets here directly
 
 ### `user_images`
 - **Read**: Users can view their own images
 - **Insert**: Authenticated users can upload images
 - **Delete**: Users can delete their own images
-- **Admin usage**: `asset_scope = 'official'` records are used by Content Factory for work-linked source assets
+- **Primary usage**: personal library for editor uploads
+
+### `production_projects` and related tables
+- **Read**: Admin only
+- **Insert**: Admin only
+- **Update**: Admin only
+- **Delete**: Admin only
+- **Primary usage**: Content Factory project grouping, editable banner linkage, build outputs, and delivery package state
 
 ## Storage Buckets
 
@@ -213,6 +322,14 @@ CREATE INDEX user_images_work_lookup_idx ON user_images(asset_scope, work_series
 
 -- Default Images
 CREATE INDEX default_images_tags_idx ON default_images USING GIN(tags);
+CREATE INDEX default_images_work_lookup_idx ON default_images(work_series_slug, work_number, variant_number, created_at DESC);
+
+-- Production Projects
+CREATE INDEX production_projects_variant_lookup_idx ON production_projects(work_series_slug, work_number, variant_number);
+CREATE INDEX production_projects_work_group_idx ON production_projects(work_series_slug, work_number, updated_at DESC);
+CREATE INDEX production_project_assets_project_idx ON production_project_assets(project_id, sort_order ASC, created_at ASC);
+CREATE INDEX production_project_banners_project_idx ON production_project_banners(project_id, role ASC, sort_order ASC);
+CREATE INDEX production_outputs_project_idx ON production_outputs(project_id, role ASC, created_at DESC);
 ```
 
 ## Triggers

@@ -20,7 +20,7 @@ import { THE_CLUB_ENTRY_URL, THE_CLUB_THUMBNAILS } from '../data/theClubThumbnai
 import { bannerStorage } from '../utils/bannerStorage';
 import { hasGuestDesignConflict, isPremiumTemplate } from '../utils/guestDesign';
 import { templateStorage } from '../utils/templateStorage';
-import { SIZE_CATEGORIES, filterBySize, getAspectClass, getGridCols } from '../utils/sizeCategories';
+import { filterBySize, getAspectClass, getAvailableSizeCategories, getGridCols } from '../utils/sizeCategories';
 
 const MAX_DISPLAY_COUNT = 30;
 const MAX_CLUB_THUMBNAILS = 50;
@@ -64,6 +64,7 @@ export const TemplateGallery = () => {
   const clubThumbnailPreviews = THE_CLUB_THUMBNAILS.slice(0, MAX_CLUB_THUMBNAILS);
 
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
+  const availableSizeCategories = getAvailableSizeCategories(templates);
 
   const handleClubThumbnailError = (
     e: SyntheticEvent<HTMLImageElement>,
@@ -398,7 +399,7 @@ export const TemplateGallery = () => {
           <div className="text-center py-12 text-gray-400">{t('banner:noTemplates')}</div>
         ) : (
           <div className="space-y-10">
-            {SIZE_CATEGORIES.map((category) => {
+            {availableSizeCategories.map((category) => {
               const filteredTemplates = filterTemplatesBySize(category.width, category.height);
               if (filteredTemplates.length === 0) return null;
               const displayTemplates = filteredTemplates.slice(0, MAX_DISPLAY_COUNT);

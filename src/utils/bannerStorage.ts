@@ -14,8 +14,6 @@ const getBannerThumbnailFileBase = (userId: string, bannerId: string) => `${user
 const getBannerDownloadFileBase = (userId: string, bannerId: string) => `${userId}/downloads/${bannerId}`;
 const versionAssetUrl = (url: string | null | undefined, updatedAt: string) =>
   url ? appendCacheBust(url, updatedAt) : undefined;
-const isMissingFullresColumnError = (error: { code?: string; message?: string } | null | undefined) =>
-  error?.code === '42703' && error.message?.includes('fullres_url');
 
 interface DbBanner {
   id: string;
@@ -121,26 +119,10 @@ export const bannerStorage = {
     }
 
     // RLS policy handles access control: public banners OR own banners
-    let data: DbBannerListItem[] | null = null;
-    let error: { code?: string; message?: string } | null = null;
-
-    {
-      const result = await supabase
-        .from('banners')
-        .select('id, name, thumbnail_url, fullres_url, updated_at, template, display_order')
-        .order('display_order', { ascending: true });
-      data = result.data as DbBannerListItem[] | null;
-      error = result.error;
-    }
-
-    if (isMissingFullresColumnError(error)) {
-      const fallback = await supabase
-        .from('banners')
-        .select('id, name, thumbnail_url, updated_at, template, display_order')
-        .order('display_order', { ascending: true });
-      data = fallback.data as DbBannerListItem[] | null;
-      error = fallback.error;
-    }
+    const { data, error } = await supabase
+      .from('banners')
+      .select('id, name, thumbnail_url, fullres_url, updated_at, template, display_order')
+      .order('display_order', { ascending: true });
 
     if (error) {
       console.error('Error fetching banners:', error);
@@ -239,26 +221,13 @@ export const bannerStorage = {
     if (updates.thumbnailUrl !== undefined) dbUpdates.thumbnail_url = updates.thumbnailUrl;
     if (updates.fullresUrl !== undefined) dbUpdates.fullres_url = updates.fullresUrl;
 
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from('banners')
       .update(dbUpdates)
       .eq('id', id)
       .eq('user_id', user.id)
       .select('*')
       .single();
-
-    if (isMissingFullresColumnError(error) && 'fullres_url' in dbUpdates) {
-      delete dbUpdates.fullres_url;
-      const fallback = await supabase
-        .from('banners')
-        .update(dbUpdates)
-        .eq('id', id)
-        .eq('user_id', user.id)
-        .select('*')
-        .single();
-      data = fallback.data;
-      error = fallback.error;
-    }
 
     if (error) {
       console.error('Error updating banner:', error);
@@ -277,30 +246,12 @@ export const bannerStorage = {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-     let existingBanner: { thumbnail_url?: string | null; fullres_url?: string | null } | null = null;
-     let existingBannerError: { code?: string; message?: string } | null = null;
-
-    {
-      const result = await supabase
-        .from('banners')
-        .select('thumbnail_url, fullres_url')
-        .eq('id', id)
-        .eq('user_id', user.id)
-        .single();
-      existingBanner = result.data;
-      existingBannerError = result.error;
-    }
-
-    if (isMissingFullresColumnError(existingBannerError)) {
-      const fallback = await supabase
-        .from('banners')
-        .select('thumbnail_url')
-        .eq('id', id)
-        .eq('user_id', user.id)
-        .single();
-      existingBanner = fallback.data;
-      existingBannerError = fallback.error;
-    }
+     const { data: existingBanner } = await supabase
+      .from('banners')
+      .select('thumbnail_url, fullres_url')
+      .eq('id', id)
+      .eq('user_id', user.id)
+      .single();
 
     const { error } = await supabase
       .from('banners')
@@ -405,32 +356,12 @@ export const bannerStorage = {
     if (updates.thumbnailDataURL || updates.fullresDataURL) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        let supportsFullresColumn = true;
-        let currentAssets: { thumbnail_url?: string | null; fullres_url?: string | null } | null = null;
-        let currentAssetsError: { code?: string; message?: string } | null = null;
-
-        {
-          const result = await supabase
-            .from('banners')
-            .select('thumbnail_url, fullres_url')
-            .eq('id', id)
-            .eq('user_id', user.id)
-            .single();
-          currentAssets = result.data;
-          currentAssetsError = result.error;
-        }
-
-        if (isMissingFullresColumnError(currentAssetsError)) {
-          supportsFullresColumn = false;
-          const fallback = await supabase
-            .from('banners')
-            .select('thumbnail_url')
-            .eq('id', id)
-            .eq('user_id', user.id)
-            .single();
-          currentAssets = fallback.data;
-          currentAssetsError = fallback.error;
-        }
+        const { data: currentAssets, error: currentAssetsError } = await supabase
+          .from('banners')
+          .select('thumbnail_url, fullres_url')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .single();
 
         if (currentAssetsError) {
           console.error('Error fetching current banner assets:', currentAssetsError);
@@ -445,7 +376,7 @@ export const bannerStorage = {
             )
           : undefined;
 
-        const nextFullresUrl = supportsFullresColumn && updates.fullresDataURL
+        const nextFullresUrl = updates.fullresDataURL
           ? await uploadDataUrlToBucket(
               updates.fullresDataURL,
               BANNER_ASSET_BUCKET,

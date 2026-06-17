@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Footer } from '../components/Footer';
 import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
@@ -8,13 +8,15 @@ import {
   formatSeriesLabel,
   formatWorkDisplayCode,
   formatWorkVariantLabel,
-  insertUserImageRecord,
+  insertDefaultImageRecord,
   OFFICIAL_ASSET_ROLE_OPTIONS,
   parseTagInput,
   WORK_SERIES_OPTIONS,
   type WorkSeriesSlug,
 } from '../utils/libraryAssets';
-import type { UserImage } from '../types/image-library';
+import type { DefaultImage } from '../types/image-library';
+import type { ProductionProjectSummary } from '../types/production-project';
+import { ensureProductionProjectFromAsset, getPrimaryEditBanner, loadRecentProductionProjects } from '../utils/productionProjects';
 
 type FactoryStatus = 'live' | 'manual' | 'planned';
 
@@ -36,7 +38,7 @@ const workflowSteps: WorkflowStep[] = [
     name: 'Character Asset Upload',
     status: 'live',
     summary: '切り抜き PNG を作品 metadata 付きで登録',
-    detail: 'Content Factory から `series / work_number / variant_number / asset_role` を付与して `user_images` に保存する。',
+    detail: 'Content Factory から `series / work_number / variant_number / asset_role` を付与して `default_images` に保存する。',
   },
   {
     name: 'Portrait Master',
@@ -140,10 +142,15 @@ function statusLabel(status: FactoryStatus): string {
 
 export function ContentFactory() {
   const { user, profile, loading } = useAuth();
-  const [officialAssets, setOfficialAssets] = useState<UserImage[]>([]);
+  const navigate = useNavigate();
+  const [officialAssets, setOfficialAssets] = useState<DefaultImage[]>([]);
+  const [recentProjects, setRecentProjects] = useState<ProductionProjectSummary[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(true);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [assetsError, setAssetsError] = useState<string | null>(null);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [creatingProjectAssetId, setCreatingProjectAssetId] = useState<string | null>(null);
   const [seriesSlug, setSeriesSlug] = useState<WorkSeriesSlug>('episode');
   const [workNumber, setWorkNumber] = useState('1');
   const [variantNumber, setVariantNumber] = useState('1');
@@ -154,17 +161,24 @@ export function ContentFactory() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
 
-  const loadOfficialAssets = async (userId: string) => {
+  const recentProjectMap = useMemo(() => {
+    const map = new Map<string, ProductionProjectSummary>();
+    for (const entry of recentProjects) {
+      const key = `${entry.project.work_series_slug}:${entry.project.work_number}:${entry.project.variant_number}`;
+      map.set(key, entry);
+    }
+    return map;
+  }, [recentProjects]);
+
+  const loadOfficialAssets = async () => {
     setAssetsLoading(true);
     setAssetsError(null);
 
     try {
       const supabase = await getSupabase();
       const { data, error } = await supabase
-        .from('user_images')
+        .from('default_images')
         .select('*')
-        .eq('user_id', userId)
-        .eq('asset_scope', 'official')
         .order('created_at', { ascending: false })
         .limit(24);
 
@@ -172,7 +186,7 @@ export function ContentFactory() {
         throw error;
       }
 
-      setOfficialAssets((data ?? []) as UserImage[]);
+      setOfficialAssets((data ?? []) as DefaultImage[]);
     } catch (error) {
       console.error('Failed to load official assets:', error);
       setAssetsError(error instanceof Error ? error.message : 'Failed to load official assets.');
@@ -181,12 +195,28 @@ export function ContentFactory() {
     }
   };
 
+  const loadProjects = async () => {
+    setProjectsLoading(true);
+    setProjectsError(null);
+
+    try {
+      const data = await loadRecentProductionProjects(12);
+      setRecentProjects(data);
+    } catch (error) {
+      console.error('Failed to load production projects:', error);
+      setProjectsError(error instanceof Error ? error.message : 'Failed to load production projects.');
+    } finally {
+      setProjectsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!user || profile?.role !== 'admin') {
       return;
     }
 
-    void loadOfficialAssets(user.id);
+    void loadOfficialAssets();
+    void loadProjects();
   }, [profile?.role, user]);
 
   const handleFactoryUpload = async () => {
@@ -243,9 +273,9 @@ export function ContentFactory() {
 
       for (const file of selectedFiles) {
         try {
-          const pathBase = `${user.id}/official/${seriesSlug}/${variantCode}/${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          const publicUrl = await uploadFileToBucket(file, 'user-images', pathBase);
-          const storagePath = extractStoragePathFromPublicUrl(publicUrl, 'user-images');
+          const pathBase = `official/${seriesSlug}/${variantCode}/${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const publicUrl = await uploadFileToBucket(file, 'default-images', pathBase);
+          const storagePath = extractStoragePathFromPublicUrl(publicUrl, 'default-images');
 
           if (!storagePath) {
             throw new Error(`Failed to resolve storage path for ${file.name}`);
@@ -260,14 +290,12 @@ export function ContentFactory() {
           });
           URL.revokeObjectURL(objectUrl);
 
-          await insertUserImageRecord({
-            userId: user.id,
+          await insertDefaultImageRecord({
             name: file.name,
             storagePath,
             width: img.width,
             height: img.height,
             fileSize: file.size,
-            assetScope: 'official',
             sourceContext: 'content_factory',
             workSeriesSlug: seriesSlug,
             workNumber: parsedWorkNumber,
@@ -284,7 +312,7 @@ export function ContentFactory() {
         }
       }
 
-      await loadOfficialAssets(user.id);
+      await loadOfficialAssets();
       setSelectedFiles([]);
 
       if (successCount > 0 && failCount === 0) {
@@ -299,6 +327,40 @@ export function ContentFactory() {
       setStatusError(error instanceof Error ? error.message : 'Upload failed.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleCreateProject = async (asset: DefaultImage) => {
+    if (!user) {
+      return;
+    }
+
+    setCreatingProjectAssetId(asset.id);
+    setStatusError(null);
+    setStatusMessage(null);
+
+    try {
+      const result = await ensureProductionProjectFromAsset(asset, user.id);
+      await loadProjects();
+
+      const label = `${formatSeriesLabel(asset.work_series_slug)} ${formatWorkDisplayCode(asset.work_number ?? 0)}-${asset.variant_number ?? 1}`;
+      const primaryBanner = getPrimaryEditBanner(result.banners);
+      if (result.createdProject) {
+        setStatusMessage(`Created production project for ${label}. ${result.createdBannerCount} draft banners are now in your designs.`);
+      } else if (result.createdBannerCount > 0) {
+        setStatusMessage(`Updated ${label}. Missing draft banners were generated and attached to the existing project.`);
+      } else {
+        setStatusMessage(`Project for ${label} already exists and is in sync.`);
+      }
+
+      if (primaryBanner) {
+        navigate(`/banner/${primaryBanner.bannerId}`);
+      }
+    } catch (error) {
+      console.error('Failed to create production project:', error);
+      setStatusError(error instanceof Error ? error.message : 'Failed to create production project.');
+    } finally {
+      setCreatingProjectAssetId(null);
     }
   };
 
@@ -336,7 +398,7 @@ export function ContentFactory() {
                 </h1>
                 <p className="mt-3 text-sm text-gray-600 text-pretty">
                   WHATIF 公式作品の制作パイプラインを、一般ユーザー向け template 導線と混ぜずに管理するための運用画面です。
-                  最初の入口は、作品 metadata 付きで公式素材を登録することです。
+                  最初の入口は、作品 metadata 付きで premium asset を登録することです。
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:w-[22rem]">
@@ -470,7 +532,7 @@ export function ContentFactory() {
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-gray-500 text-pretty">
               Target: <span className="font-medium text-gray-700">{formatSeriesLabel(seriesSlug)} {formatWorkDisplayCode(Number(workNumber) || 0)}-{variantNumber || '1'}</span>
-              <span className="ml-2">Stored in `user_images` as an official asset.</span>
+              <span className="ml-2">Stored in `default_images` as a premium asset.</span>
             </div>
             <button
               type="button"
@@ -551,7 +613,7 @@ export function ContentFactory() {
                 <div className="rounded-xl bg-gray-50 p-4">
                   <div className="font-semibold text-gray-900">2. Official assets live in the same library table</div>
                   <p className="mt-2 text-pretty">
-                    公式素材は別テーブルを増やさず、`user_images` を `asset_scope = official` 付きの台帳として拡張する。
+                    公式素材は premium ライブラリそのものとして `default_images` に登録し、そこから直接会員が利用できる状態にする。
                   </p>
                 </div>
                 <div className="rounded-xl bg-gray-50 p-4">
@@ -585,7 +647,7 @@ export function ContentFactory() {
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900 text-balance">Recent Official Assets</h2>
                   <p className="mt-1 text-sm text-gray-500 text-pretty">
-                    Content Factory から登録した画像は、既存ライブラリにも同じ `user_images` 経由で載ります。
+                    Content Factory から登録した画像を起点に、variant 単位の production project と 4 種の draft banner を作る。
                   </p>
                 </div>
                 <Link
@@ -612,17 +674,26 @@ export function ContentFactory() {
                     <div key={asset.id} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                       <div className="aspect-[4/3] bg-white">
                         <img
-                          src={getSupabaseStoragePublicUrl('user-images', asset.storage_path)}
+                          src={getSupabaseStoragePublicUrl('default-images', asset.storage_path)}
                           alt={asset.name}
                           className="h-full w-full object-contain"
                           loading="lazy"
                         />
                       </div>
                       <div className="space-y-2 p-4">
+                        {(() => {
+                          const projectKey = `${asset.work_series_slug}:${asset.work_number}:${asset.variant_number ?? 1}`;
+                          const linkedProject = recentProjectMap.get(projectKey);
+                          return linkedProject ? (
+                            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[11px] text-green-800">
+                              Project exists · {linkedProject.banners.length} linked banners
+                            </div>
+                          ) : null;
+                        })()}
                         <div className="flex items-center justify-between gap-3">
                           <div className="truncate text-sm font-semibold text-gray-900">{asset.name}</div>
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                            {asset.asset_role}
+                            {asset.asset_role ?? 'general'}
                           </span>
                         </div>
                         <div className="text-xs text-gray-500">
@@ -640,6 +711,104 @@ export function ContentFactory() {
                             ))}
                           </div>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => handleCreateProject(asset)}
+                          disabled={creatingProjectAssetId === asset.id || !asset.work_series_slug || !asset.work_number}
+                          className="w-full rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {creatingProjectAssetId === asset.id ? 'Creating Project...' : 'Create, Sync, and Open Editor'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900 text-balance">Recent Production Projects</h2>
+                  <p className="mt-1 text-sm text-gray-500 text-pretty">
+                    1 project は 1 variant package。ここから 4 種の draft banner を editor で調整する。
+                  </p>
+                </div>
+                <Link
+                  to="/banners"
+                  className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Open My Designs
+                </Link>
+              </div>
+
+              {projectsLoading ? (
+                <div className="mt-4 text-sm text-gray-500">Loading production projects...</div>
+              ) : projectsError ? (
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {projectsError}
+                </div>
+              ) : recentProjects.length === 0 ? (
+                <div className="mt-4 rounded-xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+                  No production projects yet. Create one from an official asset.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {recentProjects.map((entry) => (
+                    <div key={entry.project.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-semibold text-gray-900">
+                              {formatSeriesLabel(entry.project.work_series_slug)} {entry.project.work_display_code}-{entry.project.variant_number}
+                            </div>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                              {entry.project.status}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-gray-500">
+                            {entry.project.title ?? 'Untitled production project'}
+                          </div>
+                          {entry.sourceAsset && (
+                            <div className="mt-3 flex items-center gap-3">
+                              <div className="size-12 overflow-hidden rounded-lg bg-white">
+                                <img
+                                  src={getSupabaseStoragePublicUrl('default-images', entry.sourceAsset.storage_path)}
+                                  alt={entry.sourceAsset.name}
+                                  className="h-full w-full object-contain"
+                                  loading="lazy"
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="truncate text-xs font-medium text-gray-700">{entry.sourceAsset.name}</div>
+                                <div className="text-[11px] text-gray-500">Primary source asset</div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-gray-400">
+                          {new Date(entry.project.updated_at).toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                        {entry.banners.map((banner) => (
+                          <Link
+                            key={banner.linkId}
+                            to={`/banner/${banner.bannerId}`}
+                            className="rounded-xl border border-gray-200 bg-white px-3 py-3 hover:border-gray-300"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium text-gray-900">{banner.name}</div>
+                                <div className="mt-1 text-[11px] text-gray-500">
+                                  {banner.role} · {banner.width ?? '-'} x {banner.height ?? '-'}
+                                </div>
+                              </div>
+                              <span className="text-xs text-blue-600">Open</span>
+                            </div>
+                          </Link>
+                        ))}
                       </div>
                     </div>
                   ))}

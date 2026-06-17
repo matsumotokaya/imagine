@@ -7,7 +7,13 @@ export interface DefaultImage {
   width: number | null;
   height: number | null;
   file_size: number | null;
+  source_context?: 'library' | 'content_factory' | 'automation' | 'migration' | null;
+  work_series_slug?: WorkSeriesSlug | null;
+  work_number?: number | null;
+  variant_number?: number | null;
+  asset_role?: AssetRole | null;
   tags: string[] | null;
+  notes?: string | null;
   created_at: string;
 }
 

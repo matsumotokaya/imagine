@@ -45,6 +45,21 @@ interface InsertUserImageRecordInput {
   notes?: string | null;
 }
 
+interface InsertDefaultImageRecordInput {
+  name: string;
+  storagePath: string;
+  width: number | null;
+  height: number | null;
+  fileSize: number | null;
+  sourceContext?: 'library' | 'content_factory' | 'automation' | 'migration';
+  workSeriesSlug?: WorkSeriesSlug | null;
+  workNumber?: number | null;
+  variantNumber?: number | null;
+  assetRole?: AssetRole;
+  tags?: string[];
+  notes?: string | null;
+}
+
 export const formatWorkDisplayCode = (workNumber: number | null | undefined): string => {
   if (!workNumber || workNumber < 1) {
     return '----';
@@ -123,6 +138,42 @@ export const insertUserImageRecord = async ({
 
   if (error) {
     console.error('Failed to insert user_images record:', error);
+    throw error;
+  }
+};
+
+export const insertDefaultImageRecord = async ({
+  name,
+  storagePath,
+  width,
+  height,
+  fileSize,
+  sourceContext = 'library',
+  workSeriesSlug = null,
+  workNumber = null,
+  variantNumber = null,
+  assetRole = 'general',
+  tags = [],
+  notes = null,
+}: InsertDefaultImageRecordInput): Promise<void> => {
+  const supabase = await getSupabase();
+  const { error } = await supabase.from('default_images').insert({
+    name,
+    storage_path: storagePath,
+    width,
+    height,
+    file_size: fileSize,
+    source_context: sourceContext,
+    work_series_slug: workSeriesSlug,
+    work_number: workNumber,
+    variant_number: variantNumber,
+    asset_role: assetRole,
+    tags,
+    notes,
+  });
+
+  if (error) {
+    console.error('Failed to insert default_images record:', error);
     throw error;
   }
 };

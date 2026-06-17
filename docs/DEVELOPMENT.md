@@ -1,5 +1,16 @@
 # Development Guide
 
+## Current Priority
+
+現時点の最優先は `機能追加` ではなく、`schema alignment` と `library normalization`。
+
+現在のライブラリ前提:
+
+- `default_images` = 公式素材とプレミアムライブラリの正規台帳
+- `user_images` = private uploads
+
+次セッションで再開する場合は、まず [RENEWAL_STATUS.md](./RENEWAL_STATUS.md) を読むこと。
+
 ## Canvas Architecture
 
 ### Component Hierarchy

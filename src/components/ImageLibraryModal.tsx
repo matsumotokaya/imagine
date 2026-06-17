@@ -102,6 +102,7 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
           .from('user_images')
           .select('*', { count: 'exact' })
           .eq('user_id', user.id)
+          .eq('asset_scope', 'user')
           .order('created_at', { ascending: false })
           .range(offset, to);
 
@@ -395,14 +396,14 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
                       add_circle
                     </span>
                   </div>
-                  {'asset_scope' in image && image.asset_scope === 'official' && (
-                    <div className="absolute left-2 top-2 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold text-amber-950">
-                      Official
+                  {!('asset_scope' in image) && image.work_series_slug && image.work_number && (
+                    <div className="absolute left-2 top-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-900">
+                      Premium
                     </div>
                   )}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 text-white">
                     <div className="truncate text-[10px] font-medium">{image.name}</div>
-                    {'asset_scope' in image && image.asset_scope === 'official' && (
+                    {!('asset_scope' in image) && image.work_series_slug && image.work_number && (
                       <div className="truncate text-[9px] text-gray-300">
                         {formatWorkVariantLabel(image)}
                       </div>

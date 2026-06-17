@@ -17,7 +17,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { bannerStorage } from '../utils/bannerStorage';
 import { hasGuestDesignConflict, isPremiumTemplate } from '../utils/guestDesign';
 import { templateStorage } from '../utils/templateStorage';
-import { SIZE_CATEGORIES, getAspectClass, getGridCols } from '../utils/sizeCategories';
+import { getAspectClass, getGridCols, resolveSizeCategory } from '../utils/sizeCategories';
 
 export const TemplatesBySize = () => {
   const { sizeKey } = useParams<{ sizeKey: string }>();
@@ -37,10 +37,8 @@ export const TemplatesBySize = () => {
   const isGuest = !user;
   const isAdmin = profile?.role === 'admin';
 
-  // Find the current category
-  const category = SIZE_CATEGORIES.find((c) => c.key === sizeKey);
-
   const { data: templates = [], isLoading: templatesLoading } = useTemplates();
+  const category = resolveSizeCategory(sizeKey, templates);
 
   // Filter templates by the current category size
   const filteredTemplates = category

@@ -19,6 +19,119 @@ export const SIZE_CATEGORIES: readonly SizeCategory[] = [
   { key: 'twitterHeader', label: 'X HEADER', width: 1500, height: 500 },
 ];
 
+const CUSTOM_SIZE_KEY_PREFIX = 'size-';
+
+const KNOWN_DIMENSION_LABELS: Record<string, string> = {
+  '1080x1920': 'PHONE WALLPAPER',
+  '1920x1080': 'PC WALLPAPER',
+  '1080x1350': 'INSTAGRAM FEED',
+  '1440x2560': 'MOBILE QHD WALLPAPER',
+  '2560x1440': 'PC QHD WALLPAPER',
+  '1600x1600': 'PACKAGE COVER',
+};
+
+const buildDimensionKey = (width: number, height: number) => `${width}x${height}`;
+
+export const buildCustomSizeKey = (width: number, height: number): string =>
+  `${CUSTOM_SIZE_KEY_PREFIX}${width}x${height}`;
+
+export const getSizeCategoryLabel = (width: number, height: number): string => {
+  const known = KNOWN_DIMENSION_LABELS[buildDimensionKey(width, height)];
+  if (known) {
+    return known;
+  }
+
+  if (width === height) {
+    return `CUSTOM SQUARE ${width}`;
+  }
+
+  if (height > width) {
+    return `CUSTOM PORTRAIT ${width}x${height}`;
+  }
+
+  return `CUSTOM LANDSCAPE ${width}x${height}`;
+};
+
+export const createDynamicSizeCategory = (width: number, height: number): SizeCategory => ({
+  key: buildCustomSizeKey(width, height),
+  label: getSizeCategoryLabel(width, height),
+  width,
+  height,
+});
+
+export const resolveSizeCategory = <T extends { width?: number; height?: number }>(
+  sizeKey: string | undefined,
+  items: T[] = [],
+): SizeCategory | undefined => {
+  if (!sizeKey) {
+    return undefined;
+  }
+
+  const fixed = SIZE_CATEGORIES.find((category) => category.key === sizeKey);
+  if (fixed) {
+    return fixed;
+  }
+
+  if (!sizeKey.startsWith(CUSTOM_SIZE_KEY_PREFIX)) {
+    return undefined;
+  }
+
+  const [widthPart, heightPart] = sizeKey.slice(CUSTOM_SIZE_KEY_PREFIX.length).split('x');
+  const width = Number(widthPart);
+  const height = Number(heightPart);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return undefined;
+  }
+
+  const existsInItems = items.some((item) => item.width === width && item.height === height);
+  if (!existsInItems) {
+    return undefined;
+  }
+
+  return createDynamicSizeCategory(width, height);
+};
+
+export const getAvailableSizeCategories = <T extends { width?: number; height?: number }>(
+  items: T[],
+): SizeCategory[] => {
+  const seen = new Set<string>();
+  const categories: SizeCategory[] = [];
+
+  for (const category of SIZE_CATEGORIES) {
+    if (items.some((item) => item.width === category.width && item.height === category.height)) {
+      categories.push(category);
+      seen.add(buildDimensionKey(category.width, category.height));
+    }
+  }
+
+  const extras = Array.from(
+    new Set(
+      items
+        .filter((item) => item.width && item.height)
+        .map((item) => buildDimensionKey(item.width as number, item.height as number)),
+    ),
+  )
+    .filter((dimensionKey) => !seen.has(dimensionKey))
+    .map((dimensionKey) => {
+      const [widthPart, heightPart] = dimensionKey.split('x');
+      return createDynamicSizeCategory(Number(widthPart), Number(heightPart));
+    })
+    .sort((a, b) => {
+      const areaDiff = b.width * b.height - a.width * a.height;
+      if (areaDiff !== 0) {
+        return areaDiff;
+      }
+
+      if (a.height !== b.height) {
+        return b.height - a.height;
+      }
+
+      return b.width - a.width;
+    });
+
+  return [...categories, ...extras];
+};
+
 // Get CSS aspect ratio class based on dimensions
 export const getAspectClass = (width?: number, height?: number): string => {
   if (!width || !height) return 'aspect-[9/16]';
