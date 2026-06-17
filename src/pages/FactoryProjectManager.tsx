@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Header } from '../components/Header';
+import { SitePageLayout } from '../components/SitePageLayout';
 import { GalleryTabs } from '../components/GalleryTabs';
-import { Footer } from '../components/Footer';
 import { useAuth } from '../contexts/AuthContext';
 import {
   invalidateProductionProjectQueries,
@@ -200,7 +199,7 @@ export function FactoryProjectManager() {
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-[#101010] flex items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center bg-[#101010]">
         <div className="size-8 rounded-full border-2 border-gray-600 border-t-indigo-400 animate-spin" />
       </div>
     );
@@ -215,10 +214,8 @@ export function FactoryProjectManager() {
   }
 
   return (
-    <div className="min-h-dvh bg-[#101010]">
-      <Header />
-
-      <main className="max-w-7xl mx-auto px-6 py-8">
+    <SitePageLayout maxWidthClassName="max-w-7xl" mainClassName="py-8 sm:px-6">
+      <div>
         <GalleryTabs />
 
         <div className="mb-6 flex items-end justify-between gap-4">
@@ -393,9 +390,7 @@ export function FactoryProjectManager() {
             })}
           </div>
         )}
-      </main>
-
-      <Footer />
-    </div>
+      </div>
+    </SitePageLayout>
   );
 }

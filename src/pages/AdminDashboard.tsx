@@ -1,7 +1,7 @@
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useAdminStats } from '../hooks/useAdminStats';
-import { Footer } from '../components/Footer';
+import { SitePageLayout } from '../components/SitePageLayout';
 
 const SUPABASE_FREE_STORAGE_BYTES = 1 * 1024 * 1024 * 1024; // 1 GB
 
@@ -49,7 +49,7 @@ export function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center bg-[#101010]">
         <div className="w-8 h-8 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
@@ -66,10 +66,10 @@ export function AdminDashboard() {
   const totalStorageBytes = (stats?.userImagesBytes ?? 0) + (stats?.defaultImagesBytes ?? 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <div className="flex-1 max-w-2xl mx-auto w-full px-4 py-12">
+    <SitePageLayout maxWidthClassName="max-w-2xl" mainClassName="py-12 sm:px-6">
+      <div>
         {/* Header */}
-        <div className="mb-8">
+        <div>
           <Link to="/" className="text-blue-600 hover:text-blue-700 mb-4 inline-block">
             &larr; Back to Home
           </Link>
@@ -77,7 +77,7 @@ export function AdminDashboard() {
           <p className="text-sm text-gray-500 mt-1">Supabase Free Plan Monitoring</p>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <span className="material-symbols-outlined text-[20px]">factory</span>
             Operations
@@ -123,7 +123,7 @@ export function AdminDashboard() {
         ) : (
           <>
             {/* Storage Usage */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <span className="material-symbols-outlined text-[20px]">database</span>
                 Storage Usage
@@ -215,7 +215,6 @@ export function AdminDashboard() {
           </>
         )}
       </div>
-      <Footer />
-    </div>
+    </SitePageLayout>
   );
 }

@@ -12,6 +12,8 @@ const RELEASE_NOTES: ReleaseEntry[] = [
   {
     date: 'June 17, 2026',
     items: [
+      'Unified My Page, Admin Dashboard, and Content Factory under the same header/footer shell as the rest of the site',
+      'Adjusted the factory pages to feel less like separate apps and more like part of the main IMAGINE experience',
       'Added a blur slider for image elements in the editor properties panel',
       'Blur now works on PNG cutouts with a cleaner edge treatment to avoid bright white halos',
       'Increased the image blur range so stronger effects are available',

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Footer } from '../components/Footer';
+import { SitePageLayout } from '../components/SitePageLayout';
 import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
 import { extractStoragePathFromPublicUrl, uploadFileToBucket } from '../utils/storage';
 import {
@@ -374,7 +374,7 @@ export function ContentFactory() {
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center bg-[#101010]">
         <div className="h-8 w-8 rounded-full border-2 border-gray-300 border-t-indigo-500 animate-spin" />
       </div>
     );
@@ -389,8 +389,8 @@ export function ContentFactory() {
   }
 
   return (
-    <div className="min-h-dvh bg-gray-50 flex flex-col">
-      <div className="flex-1 max-w-6xl mx-auto w-full px-4 py-12">
+    <SitePageLayout maxWidthClassName="max-w-7xl" mainClassName="py-12 sm:px-6">
+      <div className="mx-auto w-full max-w-6xl">
         <div className="mb-8">
           <Link to="/admin" className="text-blue-600 hover:text-blue-700 inline-block mb-4">
             &larr; Back to Admin
@@ -854,7 +854,6 @@ export function ContentFactory() {
           </div>
         </section>
       </div>
-      <Footer />
-    </div>
+    </SitePageLayout>
   );
 }

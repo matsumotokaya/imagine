@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { SitePageLayout } from '../components/SitePageLayout';
 import { SubscriptionPortalErrorNotice } from '../components/SubscriptionPortalErrorNotice';
 import {
   createPortalSessionUrl,
@@ -9,7 +10,6 @@ import {
   SubscriptionPortalError,
   type SubscriptionPortalErrorDetails,
 } from '../utils/subscription';
-import { Footer } from '../components/Footer';
 
 export function MyPage() {
   const { t } = useTranslation(['auth', 'common', 'message']);
@@ -20,7 +20,7 @@ export function MyPage() {
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-gray-50 flex items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center bg-[#101010]">
         <div className="w-8 h-8 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />
       </div>
     );
@@ -74,10 +74,10 @@ export function MyPage() {
   };
 
   return (
-    <div className="min-h-dvh bg-gray-50 flex flex-col">
-      <div className="flex-1 max-w-2xl mx-auto w-full px-4 py-12">
+    <SitePageLayout maxWidthClassName="max-w-2xl" mainClassName="py-12 sm:px-6">
+      <div>
         {/* Header */}
-        <div className="mb-8">
+        <div>
           <Link to="/" className="text-blue-600 hover:text-blue-700 mb-4 inline-block">
             &larr; {t('common:button.backToHome')}
           </Link>
@@ -87,7 +87,7 @@ export function MyPage() {
         </div>
 
         {/* Profile Section */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
             {t('auth:mypage.profileSection')}
           </h2>
@@ -241,7 +241,6 @@ export function MyPage() {
           </button>
         </div>
       </div>
-      <Footer />
-    </div>
+    </SitePageLayout>
   );
 }
