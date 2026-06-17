@@ -2,6 +2,23 @@
 
 最終更新: 2026-06-17
 
+## Latest Checkpoint
+
+ここまでで到達している状態:
+
+- `Content Factory` の admin 入口は実装済み
+- `default_images` へ `series / work_number / variant_number / asset_role` を付けて公式素材を登録できる
+- 公式素材から `production project` を作り、`portrait / landscape / feed / cover` の 4 種 draft banner を自動生成できる
+- `あなたのデザイン` とは別に、`/mydesign/factory` で Factory 生成物を project 単位で見られる
+- editor から一覧へ戻る導線は `Factory` 側と通常一覧側で分岐済み
+- migration は一通り揃えたが、運用が安定したとはまだ言えない
+
+次セッションで最初に着手する場所:
+
+1. `thumbnail 保存不具合` の根治
+2. その後に `production output build` の安定化
+3. 最後に `Gallery publish / delivery` へ進む
+
 ## Current Focus
 
 現在のリニューアル作業は、`Content Factory` の UI 追加そのものよりも、`ライブラリとDBスキーマの正規化` を優先する段階に入っている。
@@ -77,11 +94,26 @@
 
 今後の開発効率を最大化するため、優先順位は以下。
 
-1. `DB schema / migration / RLS / RPC` の棚卸し
-2. schema を前提にしたコードの単純化
-3. ライブラリの正規化
-4. Content Factory の production project 化
-5. wallpaper build / Gallery publish
+1. `thumbnail 保存不具合` の根治
+2. `DB schema / migration / RLS / RPC` の最終確認
+3. schema を前提にしたコードの単純化
+4. ライブラリの正規化
+5. Content Factory の production project 化
+6. wallpaper build / Gallery publish
+
+## Current Blocker
+
+未解決の重要課題:
+
+- 画像を編集して保存しても、banner の thumbnail が更新されない
+- 特に `Content Factory` 一覧では、編集後もサムネイルが古いまま、または未保存のまま見える
+- 一部では `cover` 系 banner に thumbnail / fullres が保存されていないケースもある
+
+認識:
+
+- いったん `invalidate` や fallback の調整は入れたが、根本解決には至っていない
+- つまり、次セッションは新機能追加ではなく、まず `保存時に thumbnail が本当に生成・保存されるか` を追うべき
+- 入口は `BannerEditor -> performSave(true) -> batchSave() -> storage upload -> banners.thumbnail_url 更新` の経路
 
 ## Definition Of Done For This Debt Phase
 
@@ -94,10 +126,9 @@
 
 ## Notes For Next Session
 
-- いまの主題は `壁紙機能追加` ではなく `ライブラリとスキーマの正規化`
-- `Content Factory` は入口だけできている
-- `production_projects` の schema は定義済み
-- `Content Factory` から project 作成と 4 種 draft banner 自動生成まで実装済み
-- 次は `production_outputs` の build と package / Gallery publish の実装へ進む
-- 次は UI を広げるより、`schema ledger` を作る方が価値が高い
+- いまの主題は `壁紙機能追加` そのものではなく、まず `thumbnail 保存不具合の解消`
+- `Content Factory` は入口、素材 upload、project 作成、4 種 draft banner 自動生成まで到達済み
+- `Factory project` 一覧 UI もあるが、thumbnail が更新されないため運用上まだ不安定
+- 再開地点は `BannerEditor` の保存経路と `banners.thumbnail_url / fullres_url` の実データ確認から
+- thumbnail 問題が解消したら、次は `production_outputs` の build と package / Gallery publish に進む
 - `fullres_url` 問題のような不整合を再発させないことが最優先

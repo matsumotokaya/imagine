@@ -70,6 +70,7 @@
     "shadowOffsetX": "横オフセット",
     "shadowOffsetY": "縦オフセット",
     "shadowOpacity": "不透明度",
+    "imageBlur": "ブラー",
     "generateShadow": "シャドウを生成",
     "fitToCanvas": "キャンバスに合わせる",
     "alignment": "配置",

@@ -1,7 +1,18 @@
 import { useRef, useEffect, useState, memo } from 'react';
+import Konva from 'konva';
 import { Image as KonvaImage } from 'react-konva';
-import type Konva from 'konva';
 import type { ImageElement } from '../../types/template';
+
+const alphaPremultiplyFilter = (imageData: ImageData) => {
+  const { data } = imageData;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3] / 255;
+    data[i] = Math.round(data[i] * alpha);
+    data[i + 1] = Math.round(data[i + 1] * alpha);
+    data[i + 2] = Math.round(data[i + 2] * alpha);
+  }
+};
 
 interface ImageRendererProps {
   imageElement: ImageElement;
@@ -108,6 +119,24 @@ const ImageRendererComponent = ({
     loadImage();
   }, [imageElement.src]);
 
+  useEffect(() => {
+    const node = localNodeRef.current;
+    if (!node || !image) {
+      return;
+    }
+
+    if ((imageElement.blurRadius ?? 0) > 0) {
+      node.clearCache();
+      node.cache({
+        offset: Math.max(16, Math.ceil((imageElement.blurRadius ?? 0) * 2)),
+      });
+    } else {
+      node.clearCache();
+    }
+
+    node.getLayer()?.batchDraw();
+  }, [image, imageElement.blurRadius, imageElement.width, imageElement.height]);
+
   return (
     <KonvaImage
       ref={(node) => {
@@ -115,6 +144,8 @@ const ImageRendererComponent = ({
         nodeRef(node, imageElement.id);
       }}
       image={image || undefined}
+      filters={(imageElement.blurRadius ?? 0) > 0 ? [alphaPremultiplyFilter, Konva.Filters.Blur] : []}
+      blurRadius={imageElement.blurRadius ?? 0}
       x={imageElement.x}
       y={imageElement.y}
       width={imageElement.width}
@@ -223,6 +254,7 @@ export const ImageRenderer = memo(ImageRendererComponent, (prevProps, nextProps)
     prevImage.shadowOffsetX === nextImage.shadowOffsetX &&
     prevImage.shadowOffsetY === nextImage.shadowOffsetY &&
     prevImage.shadowOpacity === nextImage.shadowOpacity &&
+    prevImage.blurRadius === nextImage.blurRadius &&
     prevProps.isShiftPressed === nextProps.isShiftPressed &&
     prevProps.isMultiDragging === nextProps.isMultiDragging &&
     prevProps.isMultiSelected === nextProps.isMultiSelected

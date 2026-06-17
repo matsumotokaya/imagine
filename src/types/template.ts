@@ -82,6 +82,7 @@ export interface ImageElement extends BaseElement {
   src: string;
   width: number;
   height: number;
+  blurRadius?: number;
 }
 
 export type CanvasElement = TextElement | ShapeElement | ImageElement;

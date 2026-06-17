@@ -70,6 +70,7 @@
     "shadowOffsetX": "가로 오프셋",
     "shadowOffsetY": "세로 오프셋",
     "shadowOpacity": "불투명도",
+    "imageBlur": "블러",
     "generateShadow": "그림자 생성",
     "fitToCanvas": "캔버스에 맞추기",
     "alignment": "정렬",

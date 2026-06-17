@@ -1227,6 +1227,14 @@ export const BannerEditor = () => {
     }
   };
 
+  const handleImageBlurChange = (blur: number) => {
+    if (selectedElementIds.length > 0) {
+      elementOps.updateElements(selectedElementIds, (el) =>
+        el.type === 'image' ? { blurRadius: blur } : {}
+      );
+    }
+  };
+
   // Get element dimensions (from data or from rendered Konva node for text)
   const getElementSize = (el: CanvasElement): { w: number; h: number } => {
     if (el.type === 'image' || el.type === 'shape') {
@@ -1613,6 +1621,7 @@ export const BannerEditor = () => {
           onShadowOffsetXChange={handleShadowOffsetXChange}
           onShadowOffsetYChange={handleShadowOffsetYChange}
           onShadowOpacityChange={handleShadowOpacityChange}
+          onImageBlurChange={handleImageBlurChange}
           onGenerateShadow={handleGenerateShadow}
           isGeneratingShadow={isGeneratingShadow}
           onFitToCanvas={handleFitToCanvas}
@@ -1751,6 +1760,7 @@ export const BannerEditor = () => {
             onShadowOffsetXChange={handleShadowOffsetXChange}
             onShadowOffsetYChange={handleShadowOffsetYChange}
             onShadowOpacityChange={handleShadowOpacityChange}
+            onImageBlurChange={handleImageBlurChange}
             onGenerateShadow={handleGenerateShadow}
             isGeneratingShadow={isGeneratingShadow}
             onFitToCanvas={handleFitToCanvas}

@@ -70,6 +70,7 @@
     "shadowOffsetX": "Offset X",
     "shadowOffsetY": "Offset Y",
     "shadowOpacity": "Opacity",
+    "imageBlur": "Blur",
     "generateShadow": "Generate Shadow",
     "fitToCanvas": "Fit to Canvas",
     "alignment": "Alignment",

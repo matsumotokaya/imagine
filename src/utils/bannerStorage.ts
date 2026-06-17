@@ -10,10 +10,13 @@ import {
 
 const BANNER_ASSET_BUCKET = 'user-images';
 
-const getBannerThumbnailFileBase = (userId: string, bannerId: string) => `${userId}/thumbnails/${bannerId}`;
-const getBannerDownloadFileBase = (userId: string, bannerId: string) => `${userId}/downloads/${bannerId}`;
+const getBannerThumbnailFileBase = (userId: string, bannerId: string, revision?: string) =>
+  `${userId}/thumbnails/${bannerId}${revision ? `-${revision}` : ''}`;
+const getBannerDownloadFileBase = (userId: string, bannerId: string, revision?: string) =>
+  `${userId}/downloads/${bannerId}${revision ? `-${revision}` : ''}`;
 const versionAssetUrl = (url: string | null | undefined, updatedAt: string) =>
   url ? appendCacheBust(url, updatedAt) : undefined;
+const createBannerAssetRevision = () => Date.now().toString(36);
 
 interface DbBanner {
   id: string;
@@ -333,9 +336,9 @@ export const bannerStorage = {
     const supabase = await getSupabase();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const fileBase = getBannerThumbnailFileBase(user.id, id);
+    const fileBase = getBannerThumbnailFileBase(user.id, id, createBannerAssetRevision());
     const publicUrl = await uploadDataUrlToBucket(thumbnailDataURL, BANNER_ASSET_BUCKET, fileBase, {
-      upsert: true,
+      upsert: false,
     });
     await this.update(id, { thumbnailUrl: publicUrl });
   },
@@ -367,16 +370,17 @@ export const bannerStorage = {
           console.error('Error fetching current banner assets:', currentAssetsError);
         }
 
+        const assetRevision = createBannerAssetRevision();
         const nextThumbnailUrl = updates.thumbnailDataURL
           ? await uploadDataUrlToBucket(
               updates.thumbnailDataURL,
               BANNER_ASSET_BUCKET,
-              getBannerThumbnailFileBase(user.id, id),
-              { upsert: true }
+              getBannerThumbnailFileBase(user.id, id, assetRevision),
+              { upsert: false }
             )
           : undefined;
 
-        const savedBanner = await this.update(id, {
+        let savedBanner = await this.update(id, {
           elements: updates.elements,
           canvasColor: updates.canvasColor,
           thumbnailUrl: nextThumbnailUrl,
@@ -404,13 +408,17 @@ export const bannerStorage = {
             const nextFullresUrl = await uploadDataUrlToBucket(
               updates.fullresDataURL as string,
               BANNER_ASSET_BUCKET,
-              getBannerDownloadFileBase(user.id, id),
-              { upsert: true }
+              getBannerDownloadFileBase(user.id, id, assetRevision),
+              { upsert: false }
             );
 
-            await this.update(id, {
+            const bannerWithFullres = await this.update(id, {
               fullresUrl: nextFullresUrl,
             });
+
+            if (bannerWithFullres) {
+              savedBanner = bannerWithFullres;
+            }
 
             const staleFullresPath =
               previousFullresUrl && previousFullresUrl !== nextFullresUrl

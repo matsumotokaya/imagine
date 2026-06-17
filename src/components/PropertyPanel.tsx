@@ -31,6 +31,7 @@ interface PropertyPanelProps {
   onShadowOffsetXChange?: (offset: number) => void;
   onShadowOffsetYChange?: (offset: number) => void;
   onShadowOpacityChange?: (opacity: number) => void;
+  onImageBlurChange?: (blur: number) => void;
 
   // Generate shadow silhouette
   onGenerateShadow?: () => void;
@@ -47,7 +48,7 @@ interface PropertyPanelProps {
 }
 
 
-export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, onSizeChange, onWeightChange, onLetterSpacingChange, onLineHeightChange, onOpacityChange, onBringToFront, onSendToBack, isMobile = false, onClose, onDelete, onFillEnabledChange, onStrokeChange, onStrokeWidthChange, onStrokeEnabledChange, onShadowEnabledChange, onShadowColorChange, onShadowBlurChange, onShadowOffsetXChange, onShadowOffsetYChange, onShadowOpacityChange, onGenerateShadow, isGeneratingShadow, onFitToCanvas, selectedCount = 0, selectedElements = [], onCenterHorizontal, onCenterVertical }: PropertyPanelProps) => {
+export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, onSizeChange, onWeightChange, onLetterSpacingChange, onLineHeightChange, onOpacityChange, onBringToFront, onSendToBack, isMobile = false, onClose, onDelete, onFillEnabledChange, onStrokeChange, onStrokeWidthChange, onStrokeEnabledChange, onShadowEnabledChange, onShadowColorChange, onShadowBlurChange, onShadowOffsetXChange, onShadowOffsetYChange, onShadowOpacityChange, onImageBlurChange, onGenerateShadow, isGeneratingShadow, onFitToCanvas, selectedCount = 0, selectedElements = [], onCenterHorizontal, onCenterVertical }: PropertyPanelProps) => {
   const { t } = useTranslation('editor');
   const getWeightLabel = (weight: number): string => {
     if (weight <= 100) return t('properties.fontWeights.thin');
@@ -644,6 +645,29 @@ export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, on
             />
             <span className="text-xs font-medium text-gray-300 w-12 text-right">
               {Math.round((selectedElement.opacity ?? 1) * 100)}%
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Image blur - image elements only */}
+      {isImageElement && onImageBlurChange && (
+        <div className={spacing.section}>
+          <label className="block text-xs font-medium text-gray-300 mb-2">
+            {t('properties.imageBlur')}
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={selectedElement.blurRadius ?? 0}
+              onChange={(e) => onImageBlurChange(Number(e.target.value))}
+              className="flex-1 h-1.5 bg-[#444444] rounded-lg appearance-none cursor-pointer accent-indigo-500"
+            />
+            <span className="text-xs font-medium text-gray-300 w-10 text-right">
+              {selectedElement.blurRadius ?? 0}px
             </span>
           </div>
         </div>

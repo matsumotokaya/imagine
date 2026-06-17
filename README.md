@@ -132,7 +132,7 @@ See [docs/DATABASE.md](docs/DATABASE.md) for full schema details.
 
 ## Documentation
 
-- [Renewal Status](docs/RENEWAL_STATUS.md) - Current renewal focus, active library normalization work, and next-session priorities
+- [Renewal Status](docs/RENEWAL_STATUS.md) - Current checkpoint, next-session restart point, and the unresolved thumbnail-save blocker
 - [Schema Alignment](docs/SCHEMA_ALIGNMENT.md) - Production schema audit, canonical schema, and migration rollout order
 - [Production Projects](docs/PRODUCTION_PROJECTS.md) - Variant-level package model for Content Factory, editable banners, outputs, and delivery packages
 - [Development Guide](docs/DEVELOPMENT.md) - Architecture, conventions, adding features
@@ -142,7 +142,7 @@ See [docs/DATABASE.md](docs/DATABASE.md) for full schema details.
 ## Renewal Note
 
 Current renewal priority is not feature expansion first.  
-The immediate focus is `schema alignment + library normalization` so future Content Factory and wallpaper work can proceed on a stable base.
+The immediate focus is `thumbnail save stability + schema alignment + library normalization` so future Content Factory and wallpaper work can proceed on a stable base.
 
 ## i18n (Internationalization)
 
