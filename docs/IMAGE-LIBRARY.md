@@ -11,6 +11,15 @@
 
 ---
 
+## 現在の構成
+
+`user_images` は、単なる個人アップロード置き場ではなく、`作品メタデータ付きアセット台帳` として使う。
+
+- 一般ユーザーが editor から入れる画像
+- admin が Content Factory から入れる公式素材
+
+この 2 つを同じテーブルで管理し、`asset_scope` で区別する。
+
 ## 2つのカテゴリ
 
 | | プレミアムライブラリ | ユーザーアップロード |
@@ -22,6 +31,19 @@
 | **可視性** | 全ユーザー（プレミアム限定も可） | アップしたユーザー本人のみ |
 | **アップロード権限** | adminユーザーのみ | ログイン済みユーザー全員 |
 | **UIタブ名** | 「プレミアムライブラリ」 | 「アップロード」 |
+
+`user_images` の追加メタデータ:
+
+- `asset_scope`: `user` | `official`
+- `source_context`: `editor` | `content_factory` | `automation` | `migration`
+- `work_series_slug`
+- `work_number`
+- `variant_number`
+- `asset_role`
+- `tags`
+- `notes`
+
+つまり、Content Factory からの公式素材は `user-images` バケットに置きつつ、`episode 0465-1 の character cutout` のように識別できる。
 
 ### ファイル名の生成ルール
 

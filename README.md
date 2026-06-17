@@ -61,6 +61,7 @@ npm run build
 
 ### Admin Features
 - **Admin Dashboard** (`/admin`): Storage usage monitoring, user/content stats, Supabase Free plan limits
+- **Content Factory** (`/admin/content-factory`): Admin-only workflow board for official work production, wallpaper output planning, and Gallery publish sequencing
 - **Template Management**: Add, edit, delete, and reorder templates in the gallery
 - **Default Image Library**: Upload and manage public image assets available to all users
 - **Save As Template**: Convert any banner into a public template from the editor header

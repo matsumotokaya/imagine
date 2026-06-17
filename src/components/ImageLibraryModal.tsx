@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
 import type { DefaultImage, UserImage } from '../types/image-library';
+import { formatWorkVariantLabel, insertUserImageRecord } from '../utils/libraryAssets';
 
 interface ImageLibraryModalProps {
   isOpen: boolean;
@@ -195,15 +196,17 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
             const { error: uploadError } = await supabase.storage.from('user-images').upload(filePath, file);
             if (uploadError) throw uploadError;
 
-            const { error: dbError } = await supabase.from('user_images').insert({
-              user_id: user.id,
+            await insertUserImageRecord({
+              userId: user.id,
               name: file.name,
-              storage_path: filePath,
+              storagePath: filePath,
               width,
               height,
-              file_size: file.size,
+              fileSize: file.size,
+              assetScope: 'user',
+              sourceContext: 'editor',
+              assetRole: 'general',
             });
-            if (dbError) throw dbError;
           }
 
           successCount++;
@@ -392,8 +395,18 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
                       add_circle
                     </span>
                   </div>
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent text-white text-[10px] px-2 py-1.5 truncate">
-                    {image.name}
+                  {'asset_scope' in image && image.asset_scope === 'official' && (
+                    <div className="absolute left-2 top-2 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-semibold text-amber-950">
+                      Official
+                    </div>
+                  )}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 text-white">
+                    <div className="truncate text-[10px] font-medium">{image.name}</div>
+                    {'asset_scope' in image && image.asset_scope === 'official' && (
+                      <div className="truncate text-[9px] text-gray-300">
+                        {formatWorkVariantLabel(image)}
+                      </div>
+                    )}
                   </div>
                 </button>
               ))}

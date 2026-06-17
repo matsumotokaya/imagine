@@ -77,6 +77,35 @@ export function AdminDashboard() {
           <p className="text-sm text-gray-500 mt-1">Supabase Free Plan Monitoring</p>
         </div>
 
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <span className="material-symbols-outlined text-[20px]">factory</span>
+            Operations
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Link
+              to="/admin/content-factory"
+              className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100 transition-colors"
+            >
+              <div className="text-sm font-semibold text-gray-900">Content Factory</div>
+              <p className="mt-2 text-sm text-gray-500 text-pretty">
+                公式作品の壁紙・feed・cover 制作フローを管理する admin 画面。
+              </p>
+            </Link>
+            <a
+              href="https://supabase.com/dashboard"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100 transition-colors"
+            >
+              <div className="text-sm font-semibold text-gray-900">Supabase Dashboard</div>
+              <p className="mt-2 text-sm text-gray-500 text-pretty">
+                storage, bandwidth, jobs の状況を外部ダッシュボードで確認する。
+              </p>
+            </a>
+          </div>
+        </div>
+
         {statsLoading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-2 border-gray-300 border-t-indigo-500 rounded-full animate-spin" />

@@ -19,10 +19,10 @@ import { useElementOperations } from '../hooks/useElementOperations';
 import { useAuth } from '../contexts/AuthContext';
 import { GUEST_STORAGE_KEY } from '../utils/guestDesign';
 import { isDataUrlImage, uploadDataUrlToBucket, uploadFileToBucket } from '../utils/storage';
-import { getSupabase } from '../utils/supabase';
 import { templateStorage } from '../utils/templateStorage';
 import { exportImageFromDataUrl } from '../utils/exportImage';
 import { createSilhouetteBlob } from '../utils/imageShadow';
+import { insertUserImageRecord } from '../utils/libraryAssets';
 import { useEntranceAnimation } from '../hooks/useEntranceAnimation';
 import { LoadingOverlay } from '../components/canvas/LoadingOverlay';
 import type { CanvasRef } from '../components/Canvas';
@@ -920,14 +920,16 @@ export const BannerEditor = () => {
         // Register metadata to user_images table so it appears in Uploads tab
         const storagePath = finalSrc.split('/user-images/')[1];
         if (storagePath) {
-          const supabase = await getSupabase();
-          await supabase.from('user_images').insert({
-            user_id: user.id,
+          await insertUserImageRecord({
+            userId: user.id,
             name: `image-${Date.now()}`,
-            storage_path: storagePath,
+            storagePath,
             width,
             height,
-            file_size: 0,
+            fileSize: 0,
+            assetScope: 'user',
+            sourceContext: 'editor',
+            assetRole: 'general',
           });
         }
       } catch (error) {
@@ -977,14 +979,16 @@ export const BannerEditor = () => {
       // Register metadata to user_images table so it appears in Uploads tab
       const storagePath = publicUrl.split('/user-images/')[1];
       if (storagePath) {
-        const supabase = await getSupabase();
-        await supabase.from('user_images').insert({
-          user_id: user.id,
+        await insertUserImageRecord({
+          userId: user.id,
           name: file.name,
-          storage_path: storagePath,
+          storagePath,
           width,
           height,
-          file_size: file.size,
+          fileSize: file.size,
+          assetScope: 'user',
+          sourceContext: 'editor',
+          assetRole: 'general',
         });
       }
     } catch (error) {
@@ -1277,14 +1281,16 @@ export const BannerEditor = () => {
 
       const storagePath = publicUrl.split('/user-images/')[1];
       if (storagePath) {
-        const supabase = await getSupabase();
-        await supabase.from('user_images').insert({
-          user_id: user.id,
+        await insertUserImageRecord({
+          userId: user.id,
           name: 'shadow.png',
-          storage_path: storagePath,
+          storagePath,
           width: imageEl.width,
           height: imageEl.height,
-          file_size: silhouetteBlob.size,
+          fileSize: silhouetteBlob.size,
+          assetScope: 'user',
+          sourceContext: 'editor',
+          assetRole: 'shadow',
         });
       }
 

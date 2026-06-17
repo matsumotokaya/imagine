@@ -1,3 +1,5 @@
+import type { AssetRole, AssetScope, AssetSourceContext, WorkSeriesSlug } from '../utils/libraryAssets';
+
 export interface DefaultImage {
   id: string;
   name: string;
@@ -17,5 +19,13 @@ export interface UserImage {
   width: number | null;
   height: number | null;
   file_size: number | null;
+  asset_scope: AssetScope;
+  source_context: AssetSourceContext;
+  work_series_slug: WorkSeriesSlug | null;
+  work_number: number | null;
+  variant_number: number | null;
+  asset_role: AssetRole;
+  tags: string[] | null;
+  notes: string | null;
   created_at: string;
 }

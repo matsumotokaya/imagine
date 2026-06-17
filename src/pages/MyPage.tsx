@@ -198,6 +198,34 @@ export function MyPage() {
         </div>
 
         {/* Account Section */}
+        {profile?.role === 'admin' && (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              Admin Tools
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Link
+                to="/admin"
+                className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100 transition-colors"
+              >
+                <div className="text-sm font-semibold text-gray-900">Admin Dashboard</div>
+                <p className="mt-2 text-sm text-gray-500 text-pretty">
+                  ストレージ、登録者数、テンプレート数を確認する。
+                </p>
+              </Link>
+              <Link
+                to="/admin/content-factory"
+                className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100 transition-colors"
+              >
+                <div className="text-sm font-semibold text-gray-900">Content Factory</div>
+                <p className="mt-2 text-sm text-gray-500 text-pretty">
+                  公式作品の制作フローと壁紙出力方針を管理する。
+                </p>
+              </Link>
+            </div>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">
             {t('auth:mypage.accountSection')}

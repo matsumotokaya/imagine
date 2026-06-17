@@ -123,7 +123,7 @@ CREATE TABLE default_images (
 ```
 
 ### `user_images`
-User-uploaded images (personal library).
+User-uploaded images and admin-managed official work assets.
 
 ```sql
 CREATE TABLE user_images (
@@ -134,6 +134,14 @@ CREATE TABLE user_images (
   width integer,
   height integer,
   file_size integer,
+  asset_scope text NOT NULL DEFAULT 'user',
+  source_context text NOT NULL DEFAULT 'editor',
+  work_series_slug text,
+  work_number integer,
+  variant_number integer,
+  asset_role text NOT NULL DEFAULT 'general',
+  tags text[] NOT NULL DEFAULT '{}',
+  notes text,
   created_at timestamp with time zone DEFAULT now()
 );
 ```
@@ -166,6 +174,7 @@ CREATE TABLE user_images (
 - **Read**: Users can view their own images
 - **Insert**: Authenticated users can upload images
 - **Delete**: Users can delete their own images
+- **Admin usage**: `asset_scope = 'official'` records are used by Content Factory for work-linked source assets
 
 ## Storage Buckets
 
@@ -199,6 +208,8 @@ CREATE INDEX templates_display_order_idx ON templates(display_order ASC NULLS LA
 
 -- User Images
 CREATE INDEX user_images_user_id_idx ON user_images(user_id);
+CREATE INDEX user_images_scope_idx ON user_images(user_id, asset_scope, created_at DESC);
+CREATE INDEX user_images_work_lookup_idx ON user_images(asset_scope, work_series_slug, work_number, variant_number, created_at DESC);
 
 -- Default Images
 CREATE INDEX default_images_tags_idx ON default_images USING GIN(tags);

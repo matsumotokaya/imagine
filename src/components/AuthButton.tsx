@@ -191,14 +191,24 @@ export const AuthButton = () => {
             )}
 
             {profile?.role === 'admin' && (
-              <Link
-                to="/admin"
-                onClick={() => setIsMenuOpen(false)}
-                className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"
-              >
-                <span className="material-symbols-outlined text-[20px]">monitoring</span>
-                <span>Admin Dashboard</span>
-              </Link>
+              <>
+                <Link
+                  to="/admin"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                >
+                  <span className="material-symbols-outlined text-[20px]">monitoring</span>
+                  <span>Admin Dashboard</span>
+                </Link>
+                <Link
+                  to="/admin/content-factory"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="w-full px-4 py-3 text-left text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                >
+                  <span className="material-symbols-outlined text-[20px]">factory</span>
+                  <span>Content Factory</span>
+                </Link>
+              </>
             )}
 
             <button
