@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Footer } from '../components/Footer';
@@ -16,6 +17,8 @@ import {
 } from '../utils/libraryAssets';
 import type { DefaultImage } from '../types/image-library';
 import type { ProductionProjectSummary } from '../types/production-project';
+import { invalidateBannerCollectionQueries } from '../hooks/useBanners';
+import { invalidateProductionProjectQueries } from '../hooks/useProductionProjects';
 import { ensureProductionProjectFromAsset, getPrimaryEditBanner, loadRecentProductionProjects } from '../utils/productionProjects';
 
 type FactoryStatus = 'live' | 'manual' | 'planned';
@@ -143,6 +146,7 @@ function statusLabel(status: FactoryStatus): string {
 export function ContentFactory() {
   const { user, profile, loading } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [officialAssets, setOfficialAssets] = useState<DefaultImage[]>([]);
   const [recentProjects, setRecentProjects] = useState<ProductionProjectSummary[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(true);
@@ -341,6 +345,8 @@ export function ContentFactory() {
 
     try {
       const result = await ensureProductionProjectFromAsset(asset, user.id);
+      await invalidateBannerCollectionQueries(queryClient);
+      await invalidateProductionProjectQueries(queryClient);
       await loadProjects();
 
       const label = `${formatSeriesLabel(asset.work_series_slug)} ${formatWorkDisplayCode(asset.work_number ?? 0)}-${asset.variant_number ?? 1}`;
@@ -354,7 +360,9 @@ export function ContentFactory() {
       }
 
       if (primaryBanner) {
-        navigate(`/banner/${primaryBanner.bannerId}`);
+        navigate(`/banner/${primaryBanner.bannerId}`, {
+          state: { returnTo: '/admin/content-factory' },
+        });
       }
     } catch (error) {
       console.error('Failed to create production project:', error);

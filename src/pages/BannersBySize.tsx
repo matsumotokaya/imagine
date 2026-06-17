@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { Header } from '../components/Header';
@@ -10,6 +10,7 @@ import {
   useBanners,
   useDeleteBanner,
   useDuplicateBanner,
+  useFactoryBannerIds,
   useUpdateBannerName,
   bannerKeys,
 } from '../hooks/useBanners';
@@ -25,14 +26,18 @@ export const BannersBySize = () => {
   const [editingName, setEditingName] = useState('');
   const [imageLoadingStates, setImageLoadingStates] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const isGuest = !user;
+  const isAdmin = profile?.role === 'admin';
+  const isFactoryView = new URLSearchParams(location.search).get('source') === 'factory';
   const guestStorageKey = 'banalist_guest_banner';
   const [guestBanner, setGuestBanner] = useState<BannerListItem | null>(null);
 
   // React Query hooks
   const { data: banners = [], isLoading } = useBanners();
+  const { data: factoryBannerIds = [], isLoading: factoryIdsLoading } = useFactoryBannerIds(!isGuest && isAdmin);
   const deleteBanner = useDeleteBanner();
   const duplicateBanner = useDuplicateBanner();
   const updateName = useUpdateBannerName(editingId || '');
@@ -110,6 +115,8 @@ export const BannersBySize = () => {
   };
 
   const handleBannerClick = (banner: BannerListItem) => {
+    const returnTo = `${location.pathname}${location.search}`;
+
     if (isGuest && banner.id === 'guest') {
       try {
         const stored = localStorage.getItem(guestStorageKey);
@@ -134,7 +141,9 @@ export const BannersBySize = () => {
       }
       return;
     }
-    navigate(`/banner/${banner.id}`);
+    navigate(`/banner/${banner.id}`, {
+      state: { returnTo },
+    });
   };
 
   const handleDownloadBanner = async (banner: BannerListItem) => {
@@ -151,7 +160,12 @@ export const BannersBySize = () => {
     }
   };
 
-  const displayedBanners = isGuest ? (guestBanner ? [guestBanner] : []) : banners;
+  const factoryBannerIdSet = new Set(factoryBannerIds);
+  const displayedBanners = isGuest
+    ? (guestBanner ? [guestBanner] : [])
+    : isFactoryView
+      ? banners.filter((banner) => factoryBannerIdSet.has(banner.id))
+      : banners;
   const category = resolveSizeCategory(sizeKey, displayedBanners);
 
   // Filter banners by the current category size
@@ -178,6 +192,11 @@ export const BannersBySize = () => {
   const gridCols = category
     ? getGridCols(category.width, category.height)
     : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
+  const listPath = isFactoryView ? '/mydesign/factory' : '/banners';
+
+  if (isFactoryView && !authLoading && !isAdmin) {
+    return <Navigate to="/banners" replace />;
+  }
 
   // Render a single banner card
   const renderBannerCard = (banner: BannerListItem) => {
@@ -350,7 +369,7 @@ export const BannersBySize = () => {
           <div className="text-center py-20">
             <h2 className="text-xl font-semibold text-gray-100 mb-4">{t('banner:categoryNotFound')}</h2>
             <button
-              onClick={() => navigate('/banners')}
+              onClick={() => navigate(listPath)}
               className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors"
             >
               {t('banner:backToDesigns')}
@@ -372,10 +391,10 @@ export const BannersBySize = () => {
           <ol className="flex items-center gap-2 text-sm text-gray-400">
             <li>
               <button
-                onClick={() => navigate('/banners')}
+                onClick={() => navigate(listPath)}
                 className="hover:text-indigo-400 transition-colors"
               >
-                {t('banner:title')}
+                {isFactoryView ? t('banner:factoryBannersTitle') : t('banner:title')}
               </button>
             </li>
             <li>/</li>
@@ -393,7 +412,7 @@ export const BannersBySize = () => {
           </h2>
         </div>
 
-        {isLoading ? (
+        {isLoading || (isFactoryView && factoryIdsLoading) ? (
           <div className="text-center py-20">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
             <p className="mt-4 text-gray-600">{t('common:status.loading')}</p>
@@ -416,14 +435,16 @@ export const BannersBySize = () => {
               </svg>
             </div>
             <h3 className="text-lg font-medium text-gray-300 mb-2">
-              {t('banner:noDesignsForSize')}
+              {isFactoryView ? t('banner:noFactoryBannersForSize') : t('banner:noDesignsForSize')}
             </h3>
-            <p className="text-gray-400 mb-6">{t('banner:createDesignFromTemplate')}</p>
+            <p className="text-gray-400 mb-6">
+              {isFactoryView ? t('banner:factoryEmptyStateMessage') : t('banner:createDesignFromTemplate')}
+            </p>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate(listPath)}
               className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors"
             >
-              {t('banner:viewTemplates')}
+              {t('banner:backToDesigns')}
             </button>
           </div>
         ) : (

@@ -10,6 +10,7 @@ import { Footer } from '../components/Footer';
 import { SortableGrid } from '../components/SortableGrid';
 import { LikeButton } from '../components/LikeButton';
 import { TemplateWallpaperExporter } from '../components/TemplateWallpaperExporter';
+import { invalidateBannerCollectionQueries } from '../hooks/useBanners';
 import { useTemplates, templateKeys } from '../hooks/useTemplates';
 import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates';
 import type { Template, TemplateRecord } from '../types/template';
@@ -130,6 +131,7 @@ export const TemplatesBySize = () => {
     try {
       const created = await bannerStorage.createFromTemplate(resolvedTemplate, editorTemplate);
       if (created) {
+        await invalidateBannerCollectionQueries(queryClient);
         navigate(`/banner/${created.id}`);
       }
     } finally {

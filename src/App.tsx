@@ -9,6 +9,7 @@ import { queryClient } from './lib/queryClient';
 const TemplateGallery = lazy(() => import('./pages/TemplateGallery').then((module) => ({ default: module.TemplateGallery })));
 const TemplatesBySize = lazy(() => import('./pages/TemplatesBySize').then((module) => ({ default: module.TemplatesBySize })));
 const BannerManager = lazy(() => import('./pages/BannerManager').then((module) => ({ default: module.BannerManager })));
+const FactoryProjectManager = lazy(() => import('./pages/FactoryProjectManager').then((module) => ({ default: module.FactoryProjectManager })));
 const BannersBySize = lazy(() => import('./pages/BannersBySize').then((module) => ({ default: module.BannersBySize })));
 const BannerEditor = lazy(() => import('./pages/BannerEditor').then((module) => ({ default: module.BannerEditor })));
 const AuthPage = lazy(() => import('./pages/AuthPage').then((module) => ({ default: module.AuthPage })));
@@ -52,6 +53,7 @@ function App() {
               <Route path="/" element={<TemplateGallery />} />
               <Route path="/templates/:sizeKey" element={<TemplatesBySize />} />
               <Route path="/mydesign" element={<BannerManager />} />
+              <Route path="/mydesign/factory" element={<FactoryProjectManager />} />
               <Route path="/banners" element={<BannerManager />} />
               <Route path="/banners/:sizeKey" element={<BannersBySize />} />
               <Route path="/banner/:id" element={<BannerEditor />} />

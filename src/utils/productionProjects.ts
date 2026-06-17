@@ -1,6 +1,6 @@
 import { getSupabase, getSupabaseStoragePublicUrl } from './supabase';
 import type { DefaultImage } from '../types/image-library';
-import type { ImageElement, Template } from '../types/template';
+import type { CanvasElement, ImageElement, Template, TextElement } from '../types/template';
 import type {
   ProductionBannerSummary,
   ProductionProject,
@@ -9,13 +9,23 @@ import type {
   ProductionProjectSummary,
 } from '../types/production-project';
 import { formatSeriesLabel, formatWorkDisplayCode } from './libraryAssets';
+import { getFitToCanvasPlacement } from './canvasPlacement';
+import { appendCacheBust } from './storage';
+
+const DEFAULT_DRAFT_CANVAS_COLOR = '#808080';
+const INSTAGRAM_FEED_ACCENT_COLOR = '#fd4d52';
+const INSTAGRAM_FEED_TITLE_FONT = '"Bebas Neue", sans-serif';
+const INSTAGRAM_FEED_BODY_FONT = 'Arial';
+const INSTAGRAM_FEED_BODY_TEXT =
+  '- Your design is 99% done.You just finish it.\n' +
+  '- Phone wallpapers, SNS headers, custom icons and thumbnails. \n' +
+  '- Create freely and easily with IMAGINE, the simple design tool.';
 
 type DraftBannerSpec = {
   role: Exclude<ProductionProjectBannerRole, 'imagine_template'>;
   sortOrder: number;
   template: Template;
   canvasColor: string;
-  verticalBias: number;
 };
 
 const DRAFT_BANNER_SPECS: DraftBannerSpec[] = [
@@ -24,52 +34,48 @@ const DRAFT_BANNER_SPECS: DraftBannerSpec[] = [
     sortOrder: 1,
     template: {
       id: 'factory-portrait-master',
-      name: 'Portrait Master',
+      name: 'Portrait',
       width: 1440,
       height: 2560,
-      backgroundColor: '#F7F2EB',
+      backgroundColor: DEFAULT_DRAFT_CANVAS_COLOR,
     },
-    canvasColor: '#F7F2EB',
-    verticalBias: 0.58,
+    canvasColor: DEFAULT_DRAFT_CANVAS_COLOR,
   },
   {
     role: 'landscape_master',
     sortOrder: 2,
     template: {
       id: 'factory-landscape-master',
-      name: 'Landscape Master',
+      name: 'Landscape',
       width: 2560,
       height: 1440,
-      backgroundColor: '#F3ECE1',
+      backgroundColor: DEFAULT_DRAFT_CANVAS_COLOR,
     },
-    canvasColor: '#F3ECE1',
-    verticalBias: 0.57,
+    canvasColor: DEFAULT_DRAFT_CANVAS_COLOR,
   },
   {
     role: 'instagram_feed',
     sortOrder: 3,
     template: {
       id: 'factory-instagram-feed',
-      name: 'Instagram Feed',
+      name: 'Feed',
       width: 1080,
       height: 1350,
-      backgroundColor: '#F8F3EC',
+      backgroundColor: DEFAULT_DRAFT_CANVAS_COLOR,
     },
-    canvasColor: '#F8F3EC',
-    verticalBias: 0.6,
+    canvasColor: DEFAULT_DRAFT_CANVAS_COLOR,
   },
   {
     role: 'package_cover',
     sortOrder: 4,
     template: {
       id: 'factory-package-cover',
-      name: 'Package Cover',
+      name: 'Cover',
       width: 1600,
       height: 1600,
-      backgroundColor: '#F4EEE5',
+      backgroundColor: DEFAULT_DRAFT_CANVAS_COLOR,
     },
-    canvasColor: '#F4EEE5',
-    verticalBias: 0.57,
+    canvasColor: DEFAULT_DRAFT_CANVAS_COLOR,
   },
 ];
 
@@ -83,10 +89,10 @@ type DbAssetLink = {
 };
 
 const ROLE_LABELS: Record<Exclude<ProductionProjectBannerRole, 'imagine_template'>, string> = {
-  portrait_master: 'Portrait Master',
-  landscape_master: 'Landscape Master',
-  instagram_feed: 'Instagram Feed',
-  package_cover: 'Package Cover',
+  portrait_master: 'Portrait',
+  landscape_master: 'Landscape',
+  instagram_feed: 'Feed',
+  package_cover: 'Cover',
 };
 
 function getAssetDimensions(asset: DefaultImage): { width: number; height: number } {
@@ -98,32 +104,84 @@ function getAssetDimensions(asset: DefaultImage): { width: number; height: numbe
 function buildCenteredImageElement(asset: DefaultImage, spec: DraftBannerSpec): ImageElement {
   const src = getSupabaseStoragePublicUrl('default-images', asset.storage_path);
   const { width: sourceWidth, height: sourceHeight } = getAssetDimensions(asset);
-  const maxWidth = spec.template.width * 0.76;
-  const maxHeight = spec.template.height * 0.76;
-  const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
-  const width = Math.max(160, Math.round(sourceWidth * scale));
-  const height = Math.max(160, Math.round(sourceHeight * scale));
-  const x = Math.round((spec.template.width - width) / 2);
-  const centeredY = spec.template.height * spec.verticalBias - height / 2;
-  const minY = spec.template.height * 0.08;
-  const maxY = spec.template.height - height - spec.template.height * 0.06;
-  const y = Math.round(Math.max(minY, Math.min(maxY, centeredY)));
+  const placement = getFitToCanvasPlacement(
+    spec.template.width,
+    spec.template.height,
+    sourceWidth,
+    sourceHeight,
+  );
 
   return {
     id: `image-${spec.role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     type: 'image',
     src,
-    x,
-    y,
-    width,
-    height,
+    x: placement.x,
+    y: placement.y,
+    width: placement.width,
+    height: placement.height,
     visible: true,
     opacity: 1,
   };
 }
 
+function buildInstagramFeedTitle(asset: DefaultImage): string {
+  const workCode = formatWorkDisplayCode(asset.work_number ?? 0);
+  return `/IMAGINE: EP${workCode}`;
+}
+
+function buildInstagramFeedTextElements(asset: DefaultImage): TextElement[] {
+  return [
+    {
+      id: `text-instagram-feed-title-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'text',
+      text: buildInstagramFeedTitle(asset),
+      x: 45.72138853617555,
+      y: 1262.8333333333335,
+      visible: true,
+      opacity: 1,
+      fill: INSTAGRAM_FEED_ACCENT_COLOR,
+      fillEnabled: true,
+      stroke: '#000000',
+      strokeWidth: 2,
+      strokeEnabled: false,
+      fontSize: 55,
+      fontFamily: INSTAGRAM_FEED_TITLE_FONT,
+      fontWeight: 400,
+      letterSpacing: 0,
+    },
+    {
+      id: `text-instagram-feed-body-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'text',
+      text: INSTAGRAM_FEED_BODY_TEXT,
+      x: 396.73359241730446,
+      y: 1262.277777777778,
+      visible: true,
+      opacity: 1,
+      fill: INSTAGRAM_FEED_ACCENT_COLOR,
+      fillEnabled: true,
+      stroke: '#000000',
+      strokeWidth: 2,
+      strokeEnabled: false,
+      fontSize: 16,
+      fontFamily: INSTAGRAM_FEED_BODY_FONT,
+      fontWeight: 400,
+      letterSpacing: 0,
+    },
+  ];
+}
+
+function buildDraftBannerElements(asset: DefaultImage, spec: DraftBannerSpec): CanvasElement[] {
+  const elements: CanvasElement[] = [buildCenteredImageElement(asset, spec)];
+
+  if (spec.role === 'instagram_feed') {
+    elements.push(...buildInstagramFeedTextElements(asset));
+  }
+
+  return elements;
+}
+
 function buildProjectTitle(asset: DefaultImage): string {
-  const seriesLabel = formatSeriesLabel(asset.work_series_slug ?? 'episode');
+  const seriesLabel = formatSeriesLabel(asset.work_series_slug ?? 'episode').toUpperCase();
   const workCode = formatWorkDisplayCode(asset.work_number ?? 0);
   const variantNumber = asset.variant_number ?? 1;
   return `${seriesLabel} ${workCode}-${variantNumber}`;
@@ -177,7 +235,7 @@ async function loadProjectSummariesByIds(projectIds: string[]): Promise<Producti
   if (bannerIds.length > 0) {
     const { data: banners, error: bannersError } = await supabase
       .from('banners')
-      .select('id, name, updated_at, thumbnail_url, fullres_url, template')
+      .select('id, name, updated_at, thumbnail_data_url, thumbnail_url, fullres_url, template')
       .in('id', bannerIds);
 
     if (bannersError) {
@@ -219,7 +277,11 @@ async function loadProjectSummariesByIds(projectIds: string[]): Promise<Producti
       role: link.role,
       sortOrder: link.sort_order,
       name: banner.name,
-      thumbnailUrl: banner.thumbnail_url,
+      thumbnailUrl: appendCacheBust(
+        banner.thumbnail_url ?? banner.thumbnail_data_url ?? '',
+        banner.updated_at,
+      ) || null,
+      fullresUrl: appendCacheBust(banner.fullres_url ?? '', banner.updated_at) || null,
       width: banner.template?.width,
       height: banner.template?.height,
     });
@@ -410,7 +472,7 @@ export async function ensureProductionProjectFromAsset(
         user_id: userId,
         name: buildBannerName(asset, spec.role),
         template: spec.template,
-        elements: [buildCenteredImageElement(asset, spec)],
+        elements: buildDraftBannerElements(asset, spec),
         canvas_color: spec.canvasColor,
         is_public: false,
         display_order: index + 1,

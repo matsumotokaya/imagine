@@ -6,6 +6,15 @@ export type ProductionProjectStatus =
   | 'published'
   | 'archived';
 
+export type ProductionOutputRole =
+  | 'mobile_qhd'
+  | 'mobile_hd'
+  | 'pc_qhd'
+  | 'pc_hd'
+  | 'instagram_feed'
+  | 'package_cover'
+  | 'zip';
+
 export type ProductionProjectBannerRole =
   | 'portrait_master'
   | 'landscape_master'
@@ -43,6 +52,7 @@ export interface ProductionBannerSummary {
   id: string;
   name: string;
   updated_at: string;
+  thumbnail_data_url: string | null;
   thumbnail_url: string | null;
   fullres_url: string | null;
   template: {
@@ -65,6 +75,7 @@ export interface ProductionProjectSummary {
     sortOrder: number;
     name: string;
     thumbnailUrl: string | null;
+    fullresUrl: string | null;
     width?: number;
     height?: number;
   }>;

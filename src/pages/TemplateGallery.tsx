@@ -12,6 +12,7 @@ import { LikeButton } from '../components/LikeButton';
 import { DemoCanvas } from '../components/DemoCanvas';
 import { GuestLimitModal } from '../components/GuestLimitModal';
 import { TemplateWallpaperExporter } from '../components/TemplateWallpaperExporter';
+import { invalidateBannerCollectionQueries } from '../hooks/useBanners';
 import { useTemplates, templateKeys } from '../hooks/useTemplates';
 import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates';
 import type { Template, TemplateRecord } from '../types/template';
@@ -159,6 +160,7 @@ export const TemplateGallery = () => {
     try {
       const created = await bannerStorage.createFromTemplate(resolvedTemplate, editorTemplate);
       if (created) {
+        await invalidateBannerCollectionQueries(queryClient);
         navigate(`/banner/${created.id}`);
       }
     } finally {

@@ -23,11 +23,16 @@ import { templateStorage } from '../utils/templateStorage';
 import { exportImageFromDataUrl } from '../utils/exportImage';
 import { createSilhouetteBlob } from '../utils/imageShadow';
 import { insertUserImageRecord } from '../utils/libraryAssets';
+import { getFitToCanvasPlacement } from '../utils/canvasPlacement';
 import { useEntranceAnimation } from '../hooks/useEntranceAnimation';
 import { LoadingOverlay } from '../components/canvas/LoadingOverlay';
 import type { CanvasRef } from '../components/Canvas';
 
 const EditorCanvas = lazy(() => import('../components/Canvas').then((module) => ({ default: module.Canvas })));
+
+type BannerEditorLocationState = {
+  returnTo?: string;
+};
 
 export const BannerEditor = () => {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +46,8 @@ export const BannerEditor = () => {
   const [showSaveAsTemplateModal, setShowSaveAsTemplateModal] = useState(false);
   const isGuest = !id;
   const guestStorageKey = GUEST_STORAGE_KEY;
+  const locationState = location.state as BannerEditorLocationState | null;
+  const editorReturnTo = isGuest ? '/' : (locationState?.returnTo || '/mydesign');
 
   const [guestTemplate, setGuestTemplate] = useState<Template | null>(null);
   const [guestName, setGuestName] = useState<string>('');
@@ -335,7 +342,7 @@ export const BannerEditor = () => {
 
     if (!banner) {
       if (!isLoading && !id) {
-        navigate('/mydesign');
+        navigate(editorReturnTo);
       }
       return;
     }
@@ -461,13 +468,38 @@ export const BannerEditor = () => {
     }
     // If same banner, keep local state (don't overwrite with DB)
     // Note: elements is NOT in dependency array to avoid loops
-  }, [banner?.id, banner?.template, isLoading, id, navigate, profile, currentBannerId, isGuest]);
+  }, [banner?.id, banner?.template, isLoading, id, navigate, profile, currentBannerId, isGuest, editorReturnTo]);
 
   // Track if there are unsaved changes and save status
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
   const [lastSaveError, setLastSaveError] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
+
+  const generatePreviewAssets = async () => {
+    if (!canvasRef.current) {
+      return {
+        thumbnailDataURL: undefined,
+        fullresDataURL: undefined,
+      };
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    let thumbnailDataURL = canvasRef.current.exportThumbnail() || undefined;
+    let fullresDataURL = canvasRef.current.exportImage() || undefined;
+
+    if (!thumbnailDataURL || !fullresDataURL) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      thumbnailDataURL = thumbnailDataURL || canvasRef.current.exportThumbnail() || undefined;
+      fullresDataURL = fullresDataURL || canvasRef.current.exportImage() || undefined;
+    }
+
+    return {
+      thumbnailDataURL,
+      fullresDataURL,
+    };
+  };
 
   // Core save function
   const performSave = async (generateThumbnail = false) => {
@@ -478,14 +510,12 @@ export const BannerEditor = () => {
       try {
         let thumbnailDataURL: string | undefined;
         let fullresDataURL: string | undefined;
-        if (generateThumbnail && canvasRef.current && elements.length > 0) {
+        if (generateThumbnail && canvasRef.current) {
           console.log('[BannerEditor Guest] Generating thumbnail...');
-          await new Promise(resolve => setTimeout(resolve, 100));
-          thumbnailDataURL = canvasRef.current.exportThumbnail();
-          fullresDataURL = canvasRef.current.exportImage();
+          ({ thumbnailDataURL, fullresDataURL } = await generatePreviewAssets());
           console.log('[BannerEditor Guest] Thumbnail generated:', thumbnailDataURL ? `${thumbnailDataURL.substring(0, 50)}... (length: ${thumbnailDataURL.length})` : 'NONE');
         } else {
-          console.log('[BannerEditor Guest] Skipping thumbnail generation - generateThumbnail:', generateThumbnail, 'hasCanvas:', !!canvasRef.current, 'elementsCount:', elements.length);
+          console.log('[BannerEditor Guest] Skipping thumbnail generation - generateThumbnail:', generateThumbnail, 'hasCanvas:', !!canvasRef.current);
         }
 
         const updatedAt = new Date().toISOString();
@@ -525,17 +555,15 @@ export const BannerEditor = () => {
       let thumbnailDataURL: string | undefined;
       let fullresDataURL: string | undefined;
 
-      if (generateThumbnail && canvasRef.current && elements.length > 0) {
+      if (generateThumbnail && canvasRef.current) {
         console.log('[BannerEditor] 🎨 GENERATING PREVIEW ASSETS...');
-        await new Promise(resolve => setTimeout(resolve, 100));
-        thumbnailDataURL = canvasRef.current.exportThumbnail();
-        fullresDataURL = canvasRef.current.exportImage();
+        ({ thumbnailDataURL, fullresDataURL } = await generatePreviewAssets());
         console.log('[BannerEditor] 🎨 Assets generated:', {
           thumbnailLength: thumbnailDataURL?.length || 0,
           fullresLength: fullresDataURL?.length || 0,
         });
       } else {
-        console.log('[BannerEditor] ⏭️  SKIPPING asset generation (generateThumbnail:', generateThumbnail, ', hasCanvas:', !!canvasRef.current, ', elementsCount:', elements.length, ')');
+        console.log('[BannerEditor] ⏭️  SKIPPING asset generation (generateThumbnail:', generateThumbnail, ', hasCanvas:', !!canvasRef.current, ')');
       }
 
       console.log('[BannerEditor] Calling batchSave with', elements.length, 'elements, assets:', {
@@ -1244,18 +1272,18 @@ export const BannerEditor = () => {
     const el = elements.find(e => e.id === selectedElementIds[0]);
     if (!el || el.type !== 'image') return;
     const imageEl = el as ImageElement;
-
-    const cw = banner.template.width;
-    const ch = banner.template.height;
-    const scale = Math.min(cw / imageEl.width, ch / imageEl.height);
-    const newW = imageEl.width * scale;
-    const newH = imageEl.height * scale;
+    const placement = getFitToCanvasPlacement(
+      banner.template.width,
+      banner.template.height,
+      imageEl.width,
+      imageEl.height,
+    );
 
     elementOps.updateElement(imageEl.id, {
-      width: newW,
-      height: newH,
-      x: (cw - newW) / 2,
-      y: (ch - newH) / 2,
+      width: placement.width,
+      height: placement.height,
+      x: placement.x,
+      y: placement.y,
     });
   };
 
@@ -1421,12 +1449,12 @@ export const BannerEditor = () => {
         debouncedSave.cancel();
       }
       await performSave(true); // Always generate thumbnail when leaving editor (both guest and logged-in)
-      navigate('/mydesign');
+      navigate(editorReturnTo);
     } catch (error) {
       console.error('[BannerEditor] Failed to save before navigating:', error);
       const confirmLeave = window.confirm(t('banner:saveFailedConfirm'));
       if (confirmLeave) {
-        navigate('/mydesign');
+        navigate(editorReturnTo);
       }
     } finally {
       setIsNavigating(false);
@@ -1751,7 +1779,7 @@ export const BannerEditor = () => {
         isOpen={showUpgradeModal}
         onClose={() => {
           setShowUpgradeModal(false);
-          navigate('/mydesign');
+          navigate(editorReturnTo);
         }}
       />
 

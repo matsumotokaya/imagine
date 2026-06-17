@@ -1,0 +1,401 @@
+import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { Header } from '../components/Header';
+import { GalleryTabs } from '../components/GalleryTabs';
+import { Footer } from '../components/Footer';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  invalidateProductionProjectQueries,
+  useRecentProductionProjects,
+} from '../hooks/useProductionProjects';
+import {
+  buildProductionOutputs,
+  publishProductionProject,
+} from '../utils/productionOutputBuilder';
+import type { ProductionProjectBannerRole, ProductionProjectSummary, ProductionProjectStatus } from '../types/production-project';
+
+const PROJECT_LIMIT = 60;
+
+const ROLE_ORDER: ProductionProjectBannerRole[] = [
+  'portrait_master',
+  'landscape_master',
+  'instagram_feed',
+  'package_cover',
+];
+
+const ROLE_META: Record<
+  ProductionProjectBannerRole,
+  { label: string; description: string; aspectRatio: string }
+> = {
+  portrait_master: {
+    label: 'Portrait',
+    description: 'Mobile QHD',
+    aspectRatio: '9 / 16',
+  },
+  landscape_master: {
+    label: 'Landscape',
+    description: 'PC QHD',
+    aspectRatio: '16 / 9',
+  },
+  instagram_feed: {
+    label: 'Feed',
+    description: 'Instagram Feed',
+    aspectRatio: '4 / 5',
+  },
+  package_cover: {
+    label: 'Cover',
+    description: 'Package Cover',
+    aspectRatio: '1 / 1',
+  },
+  imagine_template: {
+    label: 'Template',
+    description: 'Imagine Template',
+    aspectRatio: '4 / 5',
+  },
+};
+
+function formatProjectUpdatedAt(value: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function statusClasses(status: ProductionProjectSummary['project']['status']): string {
+  switch (status) {
+    case 'published':
+      return 'bg-green-100 text-green-800';
+    case 'ready':
+      return 'bg-blue-100 text-blue-800';
+    case 'review':
+      return 'bg-amber-100 text-amber-800';
+    case 'in_progress':
+      return 'bg-slate-200 text-slate-800';
+    case 'archived':
+      return 'bg-slate-100 text-slate-500';
+    default:
+      return 'bg-slate-100 text-slate-700';
+  }
+}
+
+function statusLabel(status: ProductionProjectStatus): string {
+  switch (status) {
+    case 'in_progress':
+      return 'In Progress';
+    case 'published':
+      return 'Published';
+    case 'archived':
+      return 'Archived';
+    default:
+      return 'Draft';
+  }
+}
+
+type FactoryBannerCardProps = {
+  banner: ProductionProjectSummary['banners'][number];
+  title: string;
+  label: string;
+  description: string;
+  aspectRatio: string;
+  onOpen: () => void;
+  noThumbnailLabel: string;
+  openLabel: string;
+};
+
+function FactoryBannerCard({
+  banner,
+  title,
+  label,
+  description,
+  aspectRatio,
+  onOpen,
+  noThumbnailLabel,
+  openLabel,
+}: FactoryBannerCardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [banner.bannerId, banner.thumbnailUrl, banner.fullresUrl]);
+
+  const previewUrl = imageFailed ? null : banner.thumbnailUrl ?? banner.fullresUrl ?? null;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${title} ${label}`}
+      className="rounded-xl border border-gray-800 bg-[#111111] p-3 text-left transition-colors hover:border-indigo-500 hover:bg-[#151515]"
+    >
+      <div
+        className="overflow-hidden rounded-lg bg-[#1b1b1b]"
+        style={{ aspectRatio }}
+      >
+        {previewUrl ? (
+          <img
+            src={previewUrl}
+            alt={banner.name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+            onError={() => setImageFailed(true)}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-xs font-medium text-gray-500">
+            {noThumbnailLabel}
+          </div>
+        )}
+      </div>
+      <div className="mt-3">
+        <div className="text-sm font-semibold text-gray-100">{label}</div>
+        <div className="mt-1 text-xs text-gray-400">{description}</div>
+        <div className="mt-3 text-xs font-medium text-indigo-300">
+          {openLabel}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+export function FactoryProjectManager() {
+  const { t, i18n } = useTranslation(['banner', 'common']);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { user, profile, loading } = useAuth();
+  const [pendingByProject, setPendingByProject] = useState<Record<string, 'publish' | undefined>>({});
+  const [messageByProject, setMessageByProject] = useState<Record<string, string | undefined>>({});
+  const [errorByProject, setErrorByProject] = useState<Record<string, string | undefined>>({});
+  const {
+    data: projects = [],
+    isLoading,
+    error,
+  } = useRecentProductionProjects(PROJECT_LIMIT, !!user && profile?.role === 'admin');
+
+  const handlePublish = async (entry: ProductionProjectSummary) => {
+    setPendingByProject((prev) => ({ ...prev, [entry.project.id]: 'publish' }));
+    setErrorByProject((prev) => ({ ...prev, [entry.project.id]: undefined }));
+    setMessageByProject((prev) => ({ ...prev, [entry.project.id]: undefined }));
+
+    try {
+      const result = await buildProductionOutputs(entry);
+      await publishProductionProject(entry.project.id);
+      await invalidateProductionProjectQueries(queryClient);
+      setMessageByProject((prev) => ({
+        ...prev,
+        [entry.project.id]: t('banner:factoryPublishSuccess', { count: result.outputCount }),
+      }));
+    } catch (error) {
+      setErrorByProject((prev) => ({
+        ...prev,
+        [entry.project.id]: error instanceof Error ? error.message : t('banner:factoryPublishFailed'),
+      }));
+    } finally {
+      setPendingByProject((prev) => ({ ...prev, [entry.project.id]: undefined }));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-dvh bg-[#101010] flex items-center justify-center">
+        <div className="size-8 rounded-full border-2 border-gray-600 border-t-indigo-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  if (profile?.role !== 'admin') {
+    return <Navigate to="/mydesign" replace />;
+  }
+
+  return (
+    <div className="min-h-dvh bg-[#101010]">
+      <Header />
+
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <GalleryTabs />
+
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-100 text-balance">
+              {t('banner:factoryProjectsTitle')} ({projects.length})
+            </h2>
+            <p className="mt-2 text-sm text-gray-400 text-pretty">
+              {t('banner:factoryProjectsDescription')}
+            </p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="rounded-2xl border border-gray-800 bg-[#171717] p-5"
+              >
+                <div className="h-6 w-40 rounded bg-gray-800" />
+                <div className="mt-3 h-4 w-56 rounded bg-gray-900" />
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {Array.from({ length: 4 }).map((__, slotIndex) => (
+                    <div key={slotIndex} className="rounded-xl border border-gray-800 bg-[#111111] p-3">
+                      <div className="aspect-[4/5] rounded-lg bg-gray-900" />
+                      <div className="mt-3 h-4 w-20 rounded bg-gray-800" />
+                      <div className="mt-2 h-3 w-24 rounded bg-gray-900" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-red-900/60 bg-red-950/30 p-5 text-sm text-red-100">
+            {error instanceof Error ? error.message : t('banner:factoryProjectsLoadFailed')}
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="rounded-2xl border border-gray-800 bg-[#171717] p-10 text-center">
+            <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-[#222222]">
+              <svg className="size-8 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+            <h3 className="mt-5 text-lg font-medium text-gray-100 text-balance">
+              {t('banner:noFactoryProjects')}
+            </h3>
+            <p className="mt-2 text-sm text-gray-400 text-pretty">
+              {t('banner:factoryProjectEmptyStateMessage')}
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/mydesign')}
+              className="mt-6 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-indigo-500"
+            >
+              {t('banner:backToDesigns')}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {projects.map((entry) => {
+              const bannersByRole = new Map(entry.banners.map((banner) => [banner.role, banner]));
+              const title = entry.project.title ?? `${entry.project.work_series_slug} ${entry.project.work_display_code}-${entry.project.variant_number}`;
+              const pendingAction = pendingByProject[entry.project.id];
+              const isPublished = entry.project.status === 'published';
+
+              return (
+                <section
+                  key={entry.project.id}
+                  className="rounded-2xl border border-gray-800 bg-[#171717] p-5 shadow-sm"
+                >
+                  <div className="flex flex-col gap-3 border-b border-gray-800 pb-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-semibold text-gray-100 text-balance">{title}</h3>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusClasses(entry.project.status)}`}>
+                          {statusLabel(entry.project.status)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-400">
+                        <span className="tabular-nums">
+                          {t('banner:factoryProjectUpdatedAt')}: {formatProjectUpdatedAt(entry.project.updated_at, i18n.language)}
+                        </span>
+                        {entry.sourceAsset ? (
+                          <span className="truncate">
+                            {t('banner:factoryProjectSourceAsset')}: {entry.sourceAsset.name}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handlePublish(entry)}
+                        disabled={!!pendingAction || isPublished}
+                        className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isPublished
+                          ? t('banner:factoryPublished')
+                          : pendingAction === 'publish'
+                            ? t('banner:factoryPublishing')
+                            : t('banner:factoryPublish')}
+                      </button>
+                    </div>
+                  </div>
+
+                  {(messageByProject[entry.project.id] || errorByProject[entry.project.id]) && (
+                    <div className="mt-4 rounded-xl border border-gray-800 bg-[#111111] px-4 py-3 text-sm">
+                      {messageByProject[entry.project.id] ? (
+                        <p className="text-green-300">{messageByProject[entry.project.id]}</p>
+                      ) : null}
+                      {errorByProject[entry.project.id] ? (
+                        <p className="text-red-300">{errorByProject[entry.project.id]}</p>
+                      ) : null}
+                    </div>
+                  )}
+
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    {ROLE_ORDER.map((role) => {
+                      const banner = bannersByRole.get(role);
+                      const meta = ROLE_META[role];
+
+                      if (!banner) {
+                        return (
+                          <div
+                            key={role}
+                            className="rounded-xl border border-dashed border-gray-700 bg-[#111111] p-3"
+                          >
+                            <div
+                              className="rounded-lg bg-[#1b1b1b]"
+                              style={{ aspectRatio: meta.aspectRatio }}
+                            />
+                            <div className="mt-3">
+                              <div className="text-sm font-semibold text-gray-200">{meta.label}</div>
+                              <div className="mt-1 text-xs text-gray-500">{meta.description}</div>
+                              <div className="mt-3 text-xs font-medium text-amber-300">
+                                {t('banner:factorySlotPreparing')}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <FactoryBannerCard
+                          key={role}
+                          banner={banner}
+                          title={title}
+                          label={meta.label}
+                          description={meta.description}
+                          aspectRatio={meta.aspectRatio}
+                          onOpen={() =>
+                            navigate(`/banner/${banner.bannerId}`, {
+                              state: { returnTo: '/mydesign/factory' },
+                            })
+                          }
+                          noThumbnailLabel={t('common:thumbnail.noThumbnail')}
+                          openLabel={t('banner:open')}
+                        />
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </main>
+
+      <Footer />
+    </div>
+  );
+}

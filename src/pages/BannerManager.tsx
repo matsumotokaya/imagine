@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Header } from '../components/Header';
 import { UpgradeModal } from '../components/UpgradeModal';
@@ -13,6 +13,7 @@ import {
   useCreateBanner,
   useDeleteBanner,
   useDuplicateBanner,
+  useFactoryBannerIds,
   useUpdateBannerName,
   bannerKeys,
 } from '../hooks/useBanners';
@@ -31,14 +32,18 @@ export const BannerManager = () => {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [imageLoadingStates, setImageLoadingStates] = useState<Record<string, boolean>>({});
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
   const isGuest = !user;
+  const isAdmin = profile?.role === 'admin';
+  const isFactoryView = location.pathname === '/mydesign/factory';
   const guestStorageKey = 'banalist_guest_banner';
   const [guestBanner, setGuestBanner] = useState<BannerListItem | null>(null);
 
   // React Query hooks
   const { data: banners = [], isLoading } = useBanners();
+  const { data: factoryBannerIds = [], isLoading: factoryIdsLoading } = useFactoryBannerIds(!isGuest && isAdmin);
   const createBanner = useCreateBanner();
   const deleteBanner = useDeleteBanner();
   const duplicateBanner = useDuplicateBanner();
@@ -131,6 +136,8 @@ export const BannerManager = () => {
   };
 
   const handleBannerClick = (banner: BannerListItem) => {
+    const returnTo = `${location.pathname}${location.search}`;
+
     if (isGuest && banner.id === 'guest') {
       try {
         const stored = localStorage.getItem(guestStorageKey);
@@ -155,7 +162,9 @@ export const BannerManager = () => {
       }
       return;
     }
-    navigate(`/banner/${banner.id}`);
+    navigate(`/banner/${banner.id}`, {
+      state: { returnTo },
+    });
   };
 
   const handleDownloadBanner = async (banner: BannerListItem) => {
@@ -172,7 +181,12 @@ export const BannerManager = () => {
     }
   };
 
-  const displayedBanners = isGuest ? (guestBanner ? [guestBanner] : []) : banners;
+  const factoryBannerIdSet = new Set(factoryBannerIds);
+  const displayedBanners = isGuest
+    ? (guestBanner ? [guestBanner] : [])
+    : isFactoryView
+      ? banners.filter((banner) => factoryBannerIdSet.has(banner.id))
+      : banners;
   const availableSizeCategories = getAvailableSizeCategories(displayedBanners);
 
   // Filter banners by size category
@@ -194,6 +208,10 @@ export const BannerManager = () => {
       console.error('Failed to update display orders:', error);
     }
   };
+
+  if (isFactoryView && !authLoading && !isAdmin) {
+    return <Navigate to="/mydesign" replace />;
+  }
 
 
   // Render a single banner card
@@ -373,11 +391,11 @@ export const BannerManager = () => {
 
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold text-gray-100">
-            {t('banner:title')} ({displayedBanners.length})
+            {isFactoryView ? t('banner:factoryBannersTitle') : t('banner:title')} ({displayedBanners.length})
           </h2>
         </div>
 
-        {isLoading ? (
+        {isLoading || (isFactoryView && factoryIdsLoading) ? (
           <div className="text-center py-20">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
             <p className="mt-4 text-gray-600">{t('common:status.loading')}</p>
@@ -389,13 +407,17 @@ export const BannerManager = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-300 mb-2">{t('banner:noBanners')}</h3>
-            <p className="text-gray-400 mb-6">{t('banner:emptyStateMessage')}</p>
+            <h3 className="text-lg font-medium text-gray-300 mb-2">
+              {isFactoryView ? t('banner:noFactoryBanners') : t('banner:noBanners')}
+            </h3>
+            <p className="text-gray-400 mb-6">
+              {isFactoryView ? t('banner:factoryEmptyStateMessage') : t('banner:emptyStateMessage')}
+            </p>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate(isFactoryView ? '/mydesign' : '/')}
               className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors"
             >
-              {t('banner:viewTemplates')}
+              {isFactoryView ? t('banner:backToDesigns') : t('banner:viewTemplates')}
             </button>
           </div>
         ) : (
@@ -411,7 +433,7 @@ export const BannerManager = () => {
                 <section key={category.key}>
                   <h3 className="text-lg font-semibold text-gray-100 mb-4 flex items-center gap-2">
                     <button
-                      onClick={() => navigate(`/banners/${category.key}`)}
+                      onClick={() => navigate(`/banners/${category.key}${isFactoryView ? '?source=factory' : ''}`)}
                       className="hover:text-indigo-400 transition-colors cursor-pointer"
                     >
                       {category.label}
@@ -434,7 +456,7 @@ export const BannerManager = () => {
                   {hasMore && (
                     <div className="mt-4 text-center">
                       <button
-                        onClick={() => navigate(`/banners/${category.key}`)}
+                        onClick={() => navigate(`/banners/${category.key}${isFactoryView ? '?source=factory' : ''}`)}
                         className="px-6 py-2 text-sm font-medium text-indigo-400 hover:text-indigo-300 hover:bg-indigo-900/30 rounded-lg transition-colors"
                       >
                         {t('common:showMore', { count: filteredBanners.length - MAX_DISPLAY_COUNT })}
@@ -447,7 +469,7 @@ export const BannerManager = () => {
             })}
 
             {/* Add new banner card - shown at bottom */}
-            {!isGuest && (
+            {!isGuest && !isFactoryView && (
               <section>
                 <h3 className="text-lg font-semibold text-gray-100 mb-4">{t('banner:createNew')}</h3>
                 <div

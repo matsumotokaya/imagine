@@ -1,14 +1,18 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../contexts/AuthContext';
 
 export const GalleryTabs = () => {
   const { t } = useTranslation(['banner']);
   const location = useLocation();
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
 
   const tabs = [
     { path: '/', label: t('banner:templatesTab') },
     { path: '/mydesign', label: t('banner:myBannersTab') },
+    ...(isAdmin ? [{ path: '/mydesign/factory', label: t('banner:factoryBannersTab') }] : []),
   ];
 
   return (

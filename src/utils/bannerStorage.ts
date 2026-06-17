@@ -121,7 +121,7 @@ export const bannerStorage = {
     // RLS policy handles access control: public banners OR own banners
     const { data, error } = await supabase
       .from('banners')
-      .select('id, name, thumbnail_url, fullres_url, updated_at, template, display_order')
+      .select('id, name, thumbnail_data_url, thumbnail_url, fullres_url, updated_at, template, display_order')
       .order('display_order', { ascending: true });
 
     if (error) {
@@ -376,36 +376,56 @@ export const bannerStorage = {
             )
           : undefined;
 
-        const nextFullresUrl = updates.fullresDataURL
-          ? await uploadDataUrlToBucket(
-              updates.fullresDataURL,
-              BANNER_ASSET_BUCKET,
-              getBannerDownloadFileBase(user.id, id),
-              { upsert: true }
-            )
-          : undefined;
-
         const savedBanner = await this.update(id, {
           elements: updates.elements,
           canvasColor: updates.canvasColor,
           thumbnailUrl: nextThumbnailUrl,
-          fullresUrl: nextFullresUrl,
         });
 
-        const staleAssetPaths = [
+        const staleThumbnailPath =
           currentAssets?.thumbnail_url && nextThumbnailUrl && currentAssets.thumbnail_url !== nextThumbnailUrl
             ? extractStoragePathFromPublicUrl(currentAssets.thumbnail_url, BANNER_ASSET_BUCKET)
-            : null,
-          currentAssets?.fullres_url && nextFullresUrl && currentAssets.fullres_url !== nextFullresUrl
-            ? extractStoragePathFromPublicUrl(currentAssets.fullres_url, BANNER_ASSET_BUCKET)
-            : null,
-        ].filter((path): path is string => Boolean(path));
+            : null;
 
-        if (staleAssetPaths.length > 0) {
+        if (staleThumbnailPath) {
           try {
-            await removeFilesFromBucket(BANNER_ASSET_BUCKET, staleAssetPaths);
+            await removeFilesFromBucket(BANNER_ASSET_BUCKET, [staleThumbnailPath]);
           } catch (storageError) {
-            console.warn('Failed to clean up stale banner assets:', storageError);
+            console.warn('Failed to clean up stale banner thumbnail asset:', storageError);
+          }
+        }
+
+        if (updates.fullresDataURL) {
+          const previousFullresUrl = currentAssets?.fullres_url ?? null;
+
+          // Full-resolution PNG is heavier than the list thumbnail, so persist it
+          // separately to avoid blocking preview freshness when the PNG upload fails.
+          try {
+            const nextFullresUrl = await uploadDataUrlToBucket(
+              updates.fullresDataURL as string,
+              BANNER_ASSET_BUCKET,
+              getBannerDownloadFileBase(user.id, id),
+              { upsert: true }
+            );
+
+            await this.update(id, {
+              fullresUrl: nextFullresUrl,
+            });
+
+            const staleFullresPath =
+              previousFullresUrl && previousFullresUrl !== nextFullresUrl
+                ? extractStoragePathFromPublicUrl(previousFullresUrl, BANNER_ASSET_BUCKET)
+                : null;
+
+            if (staleFullresPath) {
+              try {
+                await removeFilesFromBucket(BANNER_ASSET_BUCKET, [staleFullresPath]);
+              } catch (storageError) {
+                console.warn('Failed to clean up stale banner full-resolution asset:', storageError);
+              }
+            }
+          } catch (fullresError) {
+            console.warn('Failed to upload/save banner full-resolution asset:', fullresError);
           }
         }
 
