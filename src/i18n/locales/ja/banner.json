@@ -4,7 +4,7 @@
   "factoryBannersTitle": "Content Factory",
   "factoryBannersTab": "Content Factory",
   "factoryProjectsTitle": "Content Factory",
-  "factoryProjectsDescription": "作品ごとに、Portrait / Landscape / Feed / Cover の4点セットをまとめて表示します。",
+  "factoryProjectsDescription": "作品ごとに Portrait / Landscape / Feed を編集し、Publish で各サイズの書き出しと Cover を自動生成します。",
   "templatesTitle": "テンプレート",
   "templatesTab": "テンプレート",
   "noTemplates": "テンプレートがありません",

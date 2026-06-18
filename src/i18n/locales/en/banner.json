@@ -4,7 +4,7 @@
   "factoryBannersTitle": "Content Factory",
   "factoryBannersTab": "Content Factory",
   "factoryProjectsTitle": "Content Factory",
-  "factoryProjectsDescription": "Shows each work package as one set with Portrait, Landscape, Feed, and Cover drafts.",
+  "factoryProjectsDescription": "Edit Portrait, Landscape, and Feed per work; Publish builds every export size and auto-generates the Cover.",
   "templatesTitle": "Templates",
   "templatesTab": "Templates",
   "noTemplates": "No templates available",

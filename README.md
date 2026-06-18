@@ -62,6 +62,9 @@ npm run build
 ### Admin Features
 - **Admin Dashboard** (`/admin`): Storage usage monitoring, user/content stats, Supabase Free plan limits
 - **Content Factory** (`/admin/content-factory`): Admin-only workflow board for official work production, wallpaper output planning, and Gallery publish sequencing
+  - Project creation auto-generates 3 editable drafts (Portrait / Landscape / Feed). The Cover is **not** an editable draft — it is composed headlessly from the HD wallpaper at Publish time
+  - **Publish** builds 5 PNG exports (mobile QHD/HD, PC QHD/HD, Instagram feed) + auto-composes the 1600×1600 `package_cover`, saved to `user-images/{userId}/production/{projectId}/`
+  - **Cover Lab** (`/admin/cover-lab`): admin preview for tuning the package cover layout (`coverComposer.ts`)
 - **Template Management**: Add, edit, delete, and reorder templates in the gallery
 - **Default Image Library**: Upload and manage public image assets available to all users
 - **Save As Template**: Convert any banner into a public template from the editor header

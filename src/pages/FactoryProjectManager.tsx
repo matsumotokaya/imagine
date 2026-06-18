@@ -17,11 +17,12 @@ import type { ProductionProjectBannerRole, ProductionProjectSummary, ProductionP
 
 const PROJECT_LIMIT = 60;
 
+// Cover is not an editable draft — it is generated headlessly at output
+// build time (see productionOutputBuilder), so it is not listed here.
 const ROLE_ORDER: ProductionProjectBannerRole[] = [
   'portrait_master',
   'landscape_master',
   'instagram_feed',
-  'package_cover',
 ];
 
 const ROLE_META: Record<

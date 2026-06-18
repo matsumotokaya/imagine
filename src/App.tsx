@@ -21,6 +21,7 @@ const MyPage = lazy(() => import('./pages/MyPage').then((module) => ({ default: 
 const UpgradePage = lazy(() => import('./pages/UpgradePage').then((module) => ({ default: module.UpgradePage })));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then((module) => ({ default: module.AdminDashboard })));
 const ContentFactory = lazy(() => import('./pages/ContentFactory').then((module) => ({ default: module.ContentFactory })));
+const CoverLab = lazy(() => import('./pages/CoverLab').then((module) => ({ default: module.CoverLab })));
 const Tokushoho = lazy(() => import('./pages/legal/Tokushoho').then((module) => ({ default: module.Tokushoho })));
 const PrivacyPolicy = lazy(() => import('./pages/legal/PrivacyPolicy').then((module) => ({ default: module.PrivacyPolicy })));
 const TermsOfService = lazy(() => import('./pages/legal/TermsOfService').then((module) => ({ default: module.TermsOfService })));
@@ -71,6 +72,7 @@ function App() {
               <Route path="/upgrade" element={<UpgradePage />} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/content-factory" element={<ContentFactory />} />
+              <Route path="/admin/cover-lab" element={<CoverLab />} />
             </Routes>
           </Suspense>
           <CookieConsent />

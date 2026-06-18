@@ -1,5 +1,12 @@
 import { getSupabase } from './supabase';
 import { removeFilesFromBucket, uploadBlobToBucket } from './storage';
+import {
+  COVER_SIZE,
+  MOCK_PUBLIC_PATH,
+  ensureCoverFontsReady,
+  loadImageElement,
+  renderCover,
+} from './coverComposer';
 import type {
   ProductionOutputRole,
   ProductionProjectStatus,
@@ -52,14 +59,15 @@ const OUTPUT_SPECS: OutputSpec[] = [
     height: 1350,
     fileName: 'instagram-feed.png',
   },
-  {
-    role: 'package_cover',
-    sourceRole: 'package_cover',
-    width: 1600,
-    height: 1600,
-    fileName: 'package-cover.png',
-  },
 ];
+
+// The package cover is generated headlessly from the mobile_hd wallpaper
+// (see coverComposer), not from an editable draft banner.
+const COVER_OUTPUT = {
+  width: 1600,
+  height: 1600,
+  fileName: 'package-cover.png',
+};
 
 function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -97,6 +105,30 @@ async function renderOutputBlob(sourceUrl: string, width: number, height: number
   context.clearRect(0, 0, width, height);
   context.drawImage(image, 0, 0, width, height);
   return canvasToPngBlob(canvas);
+}
+
+async function renderCoverBlob(wallpaperBlob: Blob, episodeCode: string): Promise<Blob> {
+  const wallpaperUrl = URL.createObjectURL(wallpaperBlob);
+  try {
+    const [wallpaper, mock] = await Promise.all([
+      loadImageElement(wallpaperUrl),
+      loadImageElement(MOCK_PUBLIC_PATH),
+    ]);
+    await ensureCoverFontsReady();
+
+    const canvas = document.createElement('canvas');
+    canvas.width = COVER_SIZE;
+    canvas.height = COVER_SIZE;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Failed to get 2D canvas context for cover.');
+    }
+
+    renderCover(context, { wallpaper, mock, episodeCode });
+    return canvasToPngBlob(canvas);
+  } finally {
+    URL.revokeObjectURL(wallpaperUrl);
+  }
 }
 
 async function updateProjectStatus(projectId: string, status: ProductionProjectStatus): Promise<void> {
@@ -159,6 +191,7 @@ async function upsertDeliveryPackage(params: {
 }
 
 async function saveCurrentOutput(params: {
+  userId: string;
   projectId: string;
   sourceBannerId: string;
   role: Exclude<ProductionOutputRole, 'zip'>;
@@ -179,7 +212,14 @@ async function saveCurrentOutput(params: {
     throw currentOutputsError;
   }
 
-  const filePath = `production/${params.projectId}/${params.fileName}`;
+  // Production outputs use fixed file names (mobile-qhd.png, etc.) and overwrite
+  // in place via upsert. This depends on TWO storage RLS policies on the
+  // user-images bucket, both keyed on "first path segment == auth.uid()":
+  //   - INSERT: for the first publish of a project
+  //   - UPDATE: for re-publishing (overwriting) an already-published project
+  // If the UPDATE policy is missing, re-publish fails with a row-level security
+  // violation even though the first publish succeeded. Keep both policies in sync.
+  const filePath = `${params.userId}/production/${params.projectId}/${params.fileName}`;
   const publicUrl = await uploadBlobToBucket(
     OUTPUT_BUCKET,
     filePath,
@@ -238,6 +278,13 @@ async function saveCurrentOutput(params: {
 }
 
 export async function buildProductionOutputs(project: ProductionProjectSummary): Promise<{ outputCount: number }> {
+  const supabase = await getSupabase();
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user) {
+    throw new Error('You must be signed in to build production outputs.');
+  }
+  const userId = authData.user.id;
+
   await updateProjectStatus(project.project.id, 'in_progress');
   await upsertDeliveryPackage({
     projectId: project.project.id,
@@ -248,6 +295,7 @@ export async function buildProductionOutputs(project: ProductionProjectSummary):
 
   try {
     let outputCount = 0;
+    let mobileHdBlob: Blob | null = null;
 
     for (const spec of OUTPUT_SPECS) {
       const sourceBanner = project.banners.find((banner) => banner.role === spec.sourceRole);
@@ -256,7 +304,8 @@ export async function buildProductionOutputs(project: ProductionProjectSummary):
       }
 
       const blob = await renderOutputBlob(sourceBanner.fullresUrl, spec.width, spec.height);
-      const savedOutput = await saveCurrentOutput({
+      await saveCurrentOutput({
+        userId,
         projectId: project.project.id,
         sourceBannerId: sourceBanner.bannerId,
         role: spec.role,
@@ -266,10 +315,29 @@ export async function buildProductionOutputs(project: ProductionProjectSummary):
         fileName: spec.fileName,
       });
 
-      if (spec.role === 'package_cover') {
-        coverOutputId = savedOutput.id;
+      if (spec.role === 'mobile_hd') {
+        mobileHdBlob = blob;
       }
 
+      outputCount += 1;
+    }
+
+    // Generate the package cover headlessly from the HD wallpaper.
+    const portraitBanner = project.banners.find((banner) => banner.role === 'portrait_master');
+    if (mobileHdBlob && portraitBanner) {
+      const episodeCode = `#${project.project.work_display_code}`;
+      const coverBlob = await renderCoverBlob(mobileHdBlob, episodeCode);
+      const savedCover = await saveCurrentOutput({
+        userId,
+        projectId: project.project.id,
+        sourceBannerId: portraitBanner.bannerId,
+        role: 'package_cover',
+        width: COVER_OUTPUT.width,
+        height: COVER_OUTPUT.height,
+        blob: coverBlob,
+        fileName: COVER_OUTPUT.fileName,
+      });
+      coverOutputId = savedCover.id;
       outputCount += 1;
     }
 

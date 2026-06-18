@@ -30,7 +30,6 @@ CREATE TABLE banners (
   template jsonb, -- Legacy field, prefer template_id
   elements jsonb DEFAULT '[]'::jsonb,
   canvas_color text DEFAULT '#FFFFFF',
-  thumbnail_data_url text, -- Deprecated (Base64)
   thumbnail_url text, -- Supabase Storage URL
   fullres_url text, -- Supabase Storage URL for downloadable PNG
   created_at timestamp with time zone DEFAULT now(),
@@ -293,16 +292,26 @@ CREATE TABLE production_delivery_packages (
 - **Path**: `default-images/{filename}`
 
 ### `user-images`
-- **Access**: Public read with RLS
-- **Upload**: Authenticated users
+- **Access**: Public read
+- **RLS**: SELECT / INSERT / UPDATE / DELETE are each allowed only when the first
+  path segment equals `auth.uid()`. The UPDATE policy is required for fixed-path
+  assets saved with `upsert: true` (see production outputs below); without it,
+  overwriting an existing object fails with a row-level security violation.
 - **Path**: `user-images/{user_id}/{filename}`
 
 ### Banner preview assets (`user-images`)
-- **Access**: Public read with RLS
-- **Upload**: Authenticated users
-- **Thumbnail path**: `user-images/{user_id}/thumbnails/{banner_id}.jpg`
-- **Download path**: `user-images/{user_id}/downloads/{banner_id}.png`
-- **Behavior**: Fixed paths with overwrite (`upsert`) so each banner keeps only the latest thumbnail and latest download asset
+- **Thumbnail path**: `user-images/{user_id}/thumbnails/{banner_id}-{revision}` (JPEG)
+- **Download path**: `user-images/{user_id}/downloads/{banner_id}-{revision}` (PNG)
+- **Behavior**: Saved with `upsert: false` under a revision-suffixed name (a new
+  INSERT each save); the previous asset is deleted afterwards. Relies on INSERT/DELETE
+  only, so it does not depend on the UPDATE policy.
+
+### Production outputs (`user-images`)
+- **Path**: `user-images/{user_id}/production/{project_id}/{role}.png`
+  (fixed names: `mobile-qhd.png`, `mobile-hd.png`, `pc-qhd.png`, `pc-hd.png`,
+  `instagram-feed.png`, `package-cover.png`)
+- **Behavior**: Saved with `upsert: true` (overwrite in place on re-publish).
+  Depends on the `user-images` UPDATE policy above.
 
 ## Indexes
 
@@ -380,12 +389,21 @@ CREATE TRIGGER on_auth_user_created
 ### Base64 to Storage URL (2025-12-16)
 - Old field: `thumbnail_data_url` (Base64 string)
 - New field: `thumbnail_url` (Storage public URL)
-- Migration script: `src/scripts/migrate-thumbnail-data-url.js`
+- Migration script: `scripts/migrate-thumbnail-data-url.js`
 
-### Banner asset overwrite mode (2026-06-16)
+### Banner asset revisioned save mode (2026-06-16)
 - Added `fullres_url` to `banners`
-- Banner thumbnails and downloadable assets now overwrite fixed Storage paths
+- Banner thumbnails and downloadable assets are saved under revision-suffixed
+  Storage paths (a new INSERT each save; the previous asset is then deleted)
 - Cleanup script: `scripts/cleanup-banner-assets.js`
+
+### Drop legacy thumbnail column + storage UPDATE policy (2026-06-19)
+- `thumbnail_data_url` was fully migrated (0 rows still using it), all code
+  references were removed, and the column was dropped from `banners`.
+- Added an UPDATE policy to the `user-images` bucket (first path segment ==
+  `auth.uid()`) so Content Factory production outputs (fixed file names saved
+  with `upsert: true`) can be overwritten on re-publish. Before this, only the
+  first publish (INSERT) succeeded and re-publishing failed with an RLS violation.
 
 ### Element Structure Evolution
 - **v1**: Separate `textElements`, `shapeElements`, `imageElements` arrays

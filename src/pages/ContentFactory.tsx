@@ -57,15 +57,21 @@ const workflowSteps: WorkflowStep[] = [
   },
   {
     name: 'Derived Outputs',
-    status: 'planned',
-    summary: 'HD / QHD / feed / cover を明示 build',
-    detail: '通常保存では重い PNG を量産せず、admin build で生成する構造にする。',
+    status: 'live',
+    summary: 'Publish で HD / QHD / feed を書き出し',
+    detail: 'portrait / landscape / feed master から mobile HD・QHD、PC HD・QHD、feed を Publish 時に build する。',
+  },
+  {
+    name: 'Cover Compose',
+    status: 'live',
+    summary: 'HD 壁紙から Cover を自動合成',
+    detail: 'mobile HD 壁紙を iPhone モックに合成し、1600 x 1600 の package cover を Publish 時にヘッドレス生成する。',
   },
   {
     name: 'Package Assembly',
-    status: 'planned',
-    summary: 'cover と 4 種壁紙を商品パッケージ化',
-    detail: 'mobile HD, mobile QHD, PC HD, PC QHD, cover を 1 セットとして扱う。',
+    status: 'live',
+    summary: 'cover と 5 種書き出しを 1 パッケージ化',
+    detail: 'mobile HD/QHD, PC HD/QHD, feed, cover を production_outputs と delivery package にまとめ、ready 状態にする。',
   },
   {
     name: 'Template Promotion',

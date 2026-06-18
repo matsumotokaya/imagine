@@ -25,7 +25,6 @@ interface DbBanner {
   template: Template;
   elements: CanvasElement[];
   canvas_color: string;
-  thumbnail_data_url?: string | null;
   thumbnail_url?: string | null;
   fullres_url?: string | null;
   created_at: string;
@@ -35,7 +34,6 @@ interface DbBanner {
 interface DbBannerListItem {
   id: string;
   name: string;
-  thumbnail_data_url?: string | null;
   thumbnail_url?: string | null;
   fullres_url?: string | null;
   updated_at: string;
@@ -50,7 +48,7 @@ const dbToBanner = (db: DbBanner): Banner => ({
   template: db.template,
   elements: db.elements,
   canvasColor: db.canvas_color,
-  thumbnailUrl: versionAssetUrl(db.thumbnail_url || db.thumbnail_data_url, db.updated_at),
+  thumbnailUrl: versionAssetUrl(db.thumbnail_url, db.updated_at),
   fullresUrl: versionAssetUrl(db.fullres_url, db.updated_at),
   createdAt: db.created_at,
   updatedAt: db.updated_at,
@@ -59,7 +57,7 @@ const dbToBanner = (db: DbBanner): Banner => ({
 const dbToBannerListItem = (db: DbBannerListItem): BannerListItem => ({
   id: db.id,
   name: db.name,
-  thumbnailUrl: versionAssetUrl(db.thumbnail_url || db.thumbnail_data_url, db.updated_at),
+  thumbnailUrl: versionAssetUrl(db.thumbnail_url, db.updated_at),
   fullresUrl: versionAssetUrl(db.fullres_url, db.updated_at),
   updatedAt: db.updated_at,
   width: db.template?.width,
@@ -124,7 +122,7 @@ export const bannerStorage = {
     // RLS policy handles access control: public banners OR own banners
     const { data, error } = await supabase
       .from('banners')
-      .select('id, name, thumbnail_data_url, thumbnail_url, fullres_url, updated_at, template, display_order')
+      .select('id, name, thumbnail_url, fullres_url, updated_at, template, display_order')
       .order('display_order', { ascending: true });
 
     if (error) {

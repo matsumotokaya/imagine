@@ -4,7 +4,7 @@
   "factoryBannersTitle": "Content Factory",
   "factoryBannersTab": "Content Factory",
   "factoryProjectsTitle": "Content Factory",
-  "factoryProjectsDescription": "以作品包為單位顯示，每個項目集中展示 Portrait、Landscape、Feed、Cover 四種草稿。",
+  "factoryProjectsDescription": "依作品編輯 Portrait、Landscape、Feed 三種草稿，Publish 時自動產生各尺寸匯出與 Cover。",
   "templatesTitle": "範本",
   "templatesTab": "範本",
   "noTemplates": "尚無範本",

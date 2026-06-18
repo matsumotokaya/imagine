@@ -52,7 +52,6 @@ export interface ProductionBannerSummary {
   id: string;
   name: string;
   updated_at: string;
-  thumbnail_data_url: string | null;
   thumbnail_url: string | null;
   fullres_url: string | null;
   template: {

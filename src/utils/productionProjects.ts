@@ -65,18 +65,6 @@ const DRAFT_BANNER_SPECS: DraftBannerSpec[] = [
     },
     canvasColor: DEFAULT_DRAFT_CANVAS_COLOR,
   },
-  {
-    role: 'package_cover',
-    sortOrder: 4,
-    template: {
-      id: 'factory-package-cover',
-      name: 'Cover',
-      width: 1600,
-      height: 1600,
-      backgroundColor: DEFAULT_DRAFT_CANVAS_COLOR,
-    },
-    canvasColor: DEFAULT_DRAFT_CANVAS_COLOR,
-  },
 ];
 
 type DbAssetLink = {
@@ -235,7 +223,7 @@ async function loadProjectSummariesByIds(projectIds: string[]): Promise<Producti
   if (bannerIds.length > 0) {
     const { data: banners, error: bannersError } = await supabase
       .from('banners')
-      .select('id, name, updated_at, thumbnail_data_url, thumbnail_url, fullres_url, template')
+      .select('id, name, updated_at, thumbnail_url, fullres_url, template')
       .in('id', bannerIds);
 
     if (bannersError) {
@@ -278,7 +266,7 @@ async function loadProjectSummariesByIds(projectIds: string[]): Promise<Producti
       sortOrder: link.sort_order,
       name: banner.name,
       thumbnailUrl: appendCacheBust(
-        banner.thumbnail_url ?? banner.thumbnail_data_url ?? '',
+        banner.thumbnail_url ?? '',
         banner.updated_at,
       ) || null,
       fullresUrl: appendCacheBust(banner.fullres_url ?? '', banner.updated_at) || null,

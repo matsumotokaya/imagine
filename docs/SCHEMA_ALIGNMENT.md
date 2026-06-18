@@ -1,171 +1,51 @@
 # Schema Alignment
 
-最終更新: 2026-06-17
+最終更新: 2026-06-19
+
+## Status: 完了
+
+`コードが前提にするスキーマ` と `本番の実スキーマ` の不一致解消フェーズは完了。
+2026-06-19 時点で本番 / ローカルとも canonical schema に一致しており、互換フォールバック無しで動作する。
 
 ## Purpose
 
-`imagine` の今後の開発効率を上げるため、`コードが前提にしているスキーマ` と `各環境の実スキーマ` を一致させる。
+`imagine` の開発効率を上げるため、コードが前提にするスキーマと各環境の実スキーマを一致させる。
+この資料は、適用済みの canonical schema と migration の記録を一箇所にまとめる。
 
-この資料は:
-
-1. 実測した production schema の要点
-2. コードが要求している canonical schema
-3. migration の適用順
-
-を一箇所にまとめる。
-
-## Production Audit Snapshot
-
-2026-06-17 時点の service role 実測:
+## 適用済み Canonical Schema（本番反映確認済み）
 
 ### `banners`
-
-存在確認済み:
-
-- `id`
-- `user_id`
-- `name`
-- `template`
-- `elements`
-- `canvas_color`
-- `thumbnail_data_url`
-- `thumbnail_url`
-- `created_at`
-- `updated_at`
-- `display_order`
-- `is_public`
-- `template_id`
-
-当初欠けていたもの:
-
-- `fullres_url`
-
-この欠落により、一覧取得と autosave が `column banners.fullres_url does not exist` で壊れた。
+- `fullres_url` 追加済み（当初欠落により一覧取得と autosave が `column banners.fullres_url does not exist` で壊れた問題は解消）
+- `is_public` / `display_order` / `template_id` あり
+- `thumbnail_data_url`（レガシー Base64 列）は全行0件移行のうえ **削除済み**（2026-06-19）
 
 ### `templates`
-
-存在確認済み:
-
-- `display_order`
-- `width`
-- `height`
-- `like_count`
-- `open_count`
+- `display_order` / `width` / `height` / `like_count` / `open_count` あり
 
 ### `user_images`
-
-不足確認済み:
-
-- `asset_scope`
-- `source_context`
-- `work_series_slug`
-- `work_number`
-- `variant_number`
-- `asset_role`
-- `tags`
-- `notes`
-
-この拡張は入れたが、最新方針では `user_images` を公式素材台帳にはしない。
-今後は private upload のみを主用途とし、`asset_scope = user` を基本とする。
+- `asset_scope` / `source_context` / `work_series_slug` / `work_number` / `variant_number` / `asset_role` / `tags` / `notes` あり
+- 用途は **private uploads のみ**（公式素材台帳にはしない）
 
 ### `default_images`
+- `source_context` / `work_series_slug` / `work_number` / `variant_number` / `asset_role` / `tags` / `notes` あり
+- **公式素材かつプレミアムアセットの正規台帳**
 
-追加が必要:
+### Production tables
+- `production_projects` / `production_project_assets` / `production_project_banners` / `production_outputs` / `production_delivery_packages` 稼働中（詳細は DATABASE.md）
 
-- `source_context`
-- `work_series_slug`
-- `work_number`
-- `variant_number`
-- `asset_role`
-- `notes`
+### Storage RLS
+- `user-images` バケットは SELECT / INSERT / UPDATE / DELETE を「パス第1セグメント == `auth.uid()`」で許可
+- UPDATE は production output（固定パス + `upsert: true`）の再publish上書きに必須（2026-06-19 追加）
 
-公式素材を直接ここへ登録するため、`default_images` 側が `作品メタデータ付きプレミアムアセット台帳` になる。
+## 適用済み migration
 
-### Existing RPC
+1. `20260617_align_core_schema.sql`
+2. `20260617_expand_user_images_for_work_assets.sql`
+3. `20260617_add_default_image_work_metadata.sql`
+4. `user-images` バケットへ UPDATE policy 追加（2026-06-19）
+5. `banners.thumbnail_data_url` 列 DROP（2026-06-19）
 
-存在確認済み:
+## 方針（継続）
 
-- `get_admin_stats`
-- `increment_template_open_count`
-- `increment_display_orders`
-
-## Canonical Schema
-
-現時点で canonical とみなす対象は以下。
-
-### `banners`
-
-必須:
-
-- `fullres_url`
-- `is_public`
-- `display_order`
-- `template_id`
-
-### `templates`
-
-必須:
-
-- `display_order`
-- `width`
-- `height`
-- `like_count`
-- `open_count`
-
-### `user_images`
-
-必須:
-
-- `asset_scope`
-- `source_context`
-- `work_series_slug`
-- `work_number`
-- `variant_number`
-- `asset_role`
-- `tags`
-- `notes`
-
-用途:
-
-- private uploads
-- legacy compatibility cleanup
-
-### `default_images`
-
-必須:
-
-- `source_context`
-- `work_series_slug`
-- `work_number`
-- `variant_number`
-- `asset_role`
-- `tags`
-- `notes`
-
-## Canonical Migration Set
-
-現時点で揃えるべき migration は以下。
-
-1. [20260617_align_core_schema.sql](/Users/kaya.matsumoto/projects/whatif/imagine/supabase/migrations/20260617_align_core_schema.sql)
-2. [20260617_expand_user_images_for_work_assets.sql](/Users/kaya.matsumoto/projects/whatif/imagine/supabase/migrations/20260617_expand_user_images_for_work_assets.sql)
-3. [20260617_add_default_image_work_metadata.sql](/Users/kaya.matsumoto/projects/whatif/imagine/supabase/migrations/20260617_add_default_image_work_metadata.sql)
-
-運用上は `20260617_align_core_schema.sql` を基準にすれば足りるようにしてある。  
-`expand_user_images_for_work_assets` は同日作業の一部で、内容は重複しても idempotent。
-
-## Rollout Order
-
-1. production に canonical migration を適用
-2. staging / local にも同じ migration を適用
-3. 全環境で schema 一致を確認
-4. canonical schema 前提のコードを deploy
-5. 暫定分岐を増やさない
-
-## Current Recommendation
-
-次のセッションでは、まずこの順で進める。
-
-1. `20260617_add_default_image_work_metadata.sql` を実行
-2. `default_images` 拡張列が本番に入ったことを確認
-3. `Content Factory` の公式素材アップロードを実機確認
-4. `user_images` は private uploads のみ返すよう UI を単純化する
+- 互換フォールバック / 暫定分岐を増やさない。足りない列・制約・ポリシーは migration で揃える。
+- 新しく「固定パス + `upsert: true`」で Storage 保存する場合、対象バケットに UPDATE policy が要る点に注意。

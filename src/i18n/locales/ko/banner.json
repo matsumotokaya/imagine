@@ -4,7 +4,7 @@
   "factoryBannersTitle": "Content Factory",
   "factoryBannersTab": "Content Factory",
   "factoryProjectsTitle": "Content Factory",
-  "factoryProjectsDescription": "각 작품 패키지를 Portrait, Landscape, Feed, Cover 4종 세트로 묶어 표시합니다.",
+  "factoryProjectsDescription": "작품별로 Portrait, Landscape, Feed를 편집하고 Publish 시 각 사이즈 내보내기와 Cover를 자동 생성합니다.",
   "templatesTitle": "템플릿",
   "templatesTab": "템플릿",
   "noTemplates": "템플릿이 없습니다",
