@@ -3,6 +3,35 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 
+function resolveReturnTarget(rawTarget: string | null) {
+  if (!rawTarget) {
+    return '/';
+  }
+
+  try {
+    const url = new URL(rawTarget, window.location.origin);
+    const allowedOrigins = new Set([
+      window.location.origin,
+      'https://whatif-ep.xyz',
+      'https://app.whatif-ep.xyz',
+      'http://localhost:3710',
+      'http://localhost:5173',
+    ]);
+
+    if (!allowedOrigins.has(url.origin)) {
+      return '/';
+    }
+
+    if (url.origin === window.location.origin) {
+      return `${url.pathname}${url.search}${url.hash}`;
+    }
+
+    return url.toString();
+  } catch {
+    return '/';
+  }
+}
+
 export const PaymentSuccess = () => {
   const { t } = useTranslation(['message', 'common']);
   const navigate = useNavigate();
@@ -12,9 +41,19 @@ export const PaymentSuccess = () => {
 
   useEffect(() => {
     const sessionId = searchParams.get('session_id');
+    const returnTarget = resolveReturnTarget(searchParams.get('return_to'));
+
+    const moveNext = () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      if (/^https?:\/\//i.test(returnTarget)) {
+        window.location.href = returnTarget;
+        return;
+      }
+      navigate(returnTarget, { replace: true });
+    };
 
     if (!sessionId) {
-      navigate('/');
+      moveNext();
       return;
     }
 
@@ -27,9 +66,7 @@ export const PaymentSuccess = () => {
       setCountdown((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          // Invalidate once more before navigating
-          queryClient.invalidateQueries({ queryKey: ['profiles'] });
-          navigate('/');
+          moveNext();
           return 0;
         }
         return prev - 1;
@@ -38,7 +75,7 @@ export const PaymentSuccess = () => {
 
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [navigate, queryClient, searchParams]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-amber-50 to-orange-50 flex items-center justify-center p-4">
@@ -90,10 +127,17 @@ export const PaymentSuccess = () => {
 
         {/* Manual Redirect Button */}
         <button
-          onClick={() => navigate('/')}
+          onClick={() => {
+            const returnTarget = resolveReturnTarget(searchParams.get('return_to'));
+            if (/^https?:\/\//i.test(returnTarget)) {
+              window.location.href = returnTarget;
+              return;
+            }
+            navigate(returnTarget);
+          }}
           className="w-full px-6 py-3 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 hover:from-yellow-500 hover:via-amber-600 hover:to-yellow-700 text-white font-bold rounded-lg transition-all shadow-lg hover:shadow-xl"
         >
-          {t('common:button.backToHome')}
+          {t('common:button.back')}
         </button>
       </div>
     </div>

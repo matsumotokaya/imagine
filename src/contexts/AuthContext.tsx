@@ -21,16 +21,29 @@ interface AuthContextType {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
-  signInWithApple: () => Promise<void>;
+  signInWithGoogle: (nextPath?: string) => Promise<void>;
+  signInWithApple: (nextPath?: string) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<{ error: string | null }>;
-  signUpWithEmail: (email: string, password: string) => Promise<{ error: string | null; needsConfirmation: boolean }>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    nextPath?: string,
+  ) => Promise<{ error: string | null; needsConfirmation: boolean }>;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   updatePassword: (password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function setAuthNextCookie(nextPath: string) {
+  const safeNextPath =
+    nextPath.startsWith('/') && !nextPath.startsWith('//') ? nextPath : '/';
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `whatif_auth_next=${encodeURIComponent(
+    safeNextPath,
+  )}; Path=/; Max-Age=600; SameSite=Lax${secure}`;
+}
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -93,7 +106,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const oauthRedirectTo = `${window.location.origin}/auth/callback`;
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (nextPath = '/') => {
+    setAuthNextCookie(nextPath);
     const supabase = await getSupabase();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -106,7 +120,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const signInWithApple = async () => {
+  const signInWithApple = async (nextPath = '/') => {
+    setAuthNextCookie(nextPath);
     const supabase = await getSupabase();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'apple',
@@ -125,7 +140,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return { error: error?.message || null };
   };
 
-  const signUpWithEmail = async (email: string, password: string) => {
+  const signUpWithEmail = async (email: string, password: string, nextPath = '/') => {
+    setAuthNextCookie(nextPath);
     const supabase = await getSupabase();
     const { data, error } = await supabase.auth.signUp({
       email,

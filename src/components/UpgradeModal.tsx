@@ -20,7 +20,7 @@ export const UpgradeModal = ({ isOpen, onClose }: UpgradeModalProps) => {
   const handleUpgrade = async () => {
     if (!user) {
       alert(t('message:error.loginRequired'));
-      navigate(`/auth?redirect=${encodeURIComponent('/upgrade')}`);
+      navigate(`/auth?redirect=${encodeURIComponent('/plans')}`);
       return;
     }
 

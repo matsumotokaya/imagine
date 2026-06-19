@@ -2,10 +2,33 @@ import { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getSupabase } from '../utils/supabase';
 
+function readAuthNextCookie() {
+  const raw = document.cookie
+    .split('; ')
+    .find((part) => part.startsWith('whatif_auth_next='))
+    ?.split('=')
+    .slice(1)
+    .join('=');
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+}
+
+function clearAuthNextCookie() {
+  document.cookie = 'whatif_auth_next=; Path=/; Max-Age=0; SameSite=Lax';
+}
+
 export const AuthCallback = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/';
+  const redirect = searchParams.get('redirect') || readAuthNextCookie() || '/';
 
   useEffect(() => {
     let isActive = true;
@@ -26,6 +49,7 @@ export const AuthCallback = () => {
         }
 
         if (session) {
+          clearAuthNextCookie();
           navigate(redirect, { replace: true });
         } else {
           navigate('/auth?error=callback_failed', { replace: true });
@@ -41,6 +65,7 @@ export const AuthCallback = () => {
           }
 
           if (session) {
+            clearAuthNextCookie();
             navigate(redirect, { replace: true });
           } else {
             navigate('/auth?error=callback_failed', { replace: true });

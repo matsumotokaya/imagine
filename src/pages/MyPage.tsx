@@ -188,7 +188,7 @@ export function MyPage() {
                 {t('auth:mypage.freeDescription')}
               </p>
               <Link
-                to="/upgrade"
+                to="/plans"
                 className="inline-flex px-5 py-2.5 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 hover:from-yellow-500 hover:via-amber-600 hover:to-yellow-700 text-white text-sm font-bold rounded-lg transition-all shadow-lg hover:shadow-xl"
               >
                 {t('auth:mypage.upgradeToPremium')}

@@ -84,7 +84,7 @@ export const AuthPage = () => {
     }
 
     setIsSubmitting(true);
-    const result = await signUpWithEmail(email, password);
+    const result = await signUpWithEmail(email, password, redirectTo);
     setIsSubmitting(false);
 
     if (result.error) {
@@ -420,7 +420,7 @@ export const AuthPage = () => {
             {/* OAuth buttons */}
             <div className="mb-6 space-y-3">
               <button
-                onClick={signInWithGoogle}
+                onClick={() => signInWithGoogle(redirectTo)}
                 className="w-full flex items-center justify-center gap-3 rounded-lg bg-white px-4 py-3 font-medium text-gray-900 transition-colors hover:bg-gray-100"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -433,7 +433,7 @@ export const AuthPage = () => {
               </button>
 
               <button
-                onClick={signInWithApple}
+                onClick={() => signInWithApple(redirectTo)}
                 className="w-full flex items-center justify-center gap-3 rounded-lg border border-[#3b3b3b] bg-black px-4 py-3 font-medium text-white transition-colors hover:bg-gray-900"
               >
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">

@@ -69,6 +69,7 @@ function App() {
               <Route path="/legal/security" element={<SecurityPolicy />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/mypage" element={<MyPage />} />
+              <Route path="/plans" element={<UpgradePage />} />
               <Route path="/upgrade" element={<UpgradePage />} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/content-factory" element={<ContentFactory />} />

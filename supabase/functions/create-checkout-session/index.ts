@@ -26,6 +26,28 @@ const getStripeSecretKey = (stripeMode: unknown) => {
   throw new Error('No Stripe secret key configured')
 }
 
+const resolveRelativePath = (value: unknown, fallback: string) => {
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//')) {
+    return fallback
+  }
+
+  return value
+}
+
+const buildAbsoluteUrl = (
+  origin: string,
+  path: string,
+  options: { includeSessionId?: boolean } = {},
+) => {
+  const url = new URL(path, origin)
+
+  if (options.includeSessionId) {
+    url.searchParams.set('session_id', '{CHECKOUT_SESSION_ID}')
+  }
+
+  return url.toString()
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -33,7 +55,7 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, priceId, stripeMode } = await req.json()
+    const { userId, priceId, stripeMode, successPath, cancelPath } = await req.json()
 
     const stripe = new Stripe(getStripeSecretKey(stripeMode), {
       apiVersion: '2023-10-16',
@@ -49,6 +71,20 @@ serve(async (req) => {
       )
     }
 
+    const origin = req.headers.get('origin')
+    if (!origin) {
+      return new Response(
+        JSON.stringify({ error: 'Missing origin header' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      )
+    }
+
+    const resolvedSuccessPath = resolveRelativePath(successPath, '/success')
+    const resolvedCancelPath = resolveRelativePath(cancelPath, '/')
+
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -59,8 +95,8 @@ serve(async (req) => {
           quantity: 1,
         },
       ],
-      success_url: `${req.headers.get('origin')}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.get('origin')}/`,
+      success_url: buildAbsoluteUrl(origin, resolvedSuccessPath, { includeSessionId: true }),
+      cancel_url: buildAbsoluteUrl(origin, resolvedCancelPath),
       client_reference_id: userId,
       metadata: {
         user_id: userId,

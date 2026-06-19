@@ -124,7 +124,16 @@ async function buildPortalError(error: unknown, response?: Response) {
   });
 }
 
-export async function createCheckoutSessionUrl(userId: string, accessToken?: string) {
+export interface CheckoutSessionOptions {
+  successPath?: string;
+  cancelPath?: string;
+}
+
+export async function createCheckoutSessionUrl(
+  userId: string,
+  accessToken?: string,
+  options: CheckoutSessionOptions = {},
+) {
   if (!STRIPE_PRICE_ID) {
     throw new Error('stripe_price_id_missing');
   }
@@ -138,6 +147,8 @@ export async function createCheckoutSessionUrl(userId: string, accessToken?: str
       userId,
       priceId: STRIPE_PRICE_ID,
       stripeMode: STRIPE_MODE,
+      successPath: options.successPath,
+      cancelPath: options.cancelPath,
     },
   });
 
