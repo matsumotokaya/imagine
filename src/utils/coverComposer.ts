@@ -32,6 +32,15 @@ export const COVER_LAYOUT = {
     height: 1360,
     // Vertical center offset (0 = centered).
     offsetY: 0,
+    shadow: {
+      color: 'rgba(0, 0, 0, 0.68)',
+      fill: 'rgba(0, 0, 0, 0.28)',
+      blur: 64,
+      offsetX: 38,
+      offsetY: 66,
+      inset: 28,
+      radius: 150,
+    },
   },
   // Left promo block — a single aligned grid: every row shares `left`
   // and `width`, so the FREE badge and the episode bar end on the same
@@ -43,15 +52,15 @@ export const COVER_LAYOUT = {
 
     title: {
       text: 'WHATIF',
-      baselineY: 690,
+      baselineY: 626,
       fontSize: 159,
       fontFamily: '"Arial Black", Arial, sans-serif',
       // Negative tracking pulls the heavy caps tight like the sample.
       letterSpacing: -4,
     },
     subtitle: {
-      text: 'PHONE WALLPAPER',
-      baselineY: 812,
+      text: 'WALLPAPER PACK',
+      baselineY: 720,
       fontSize: 54,
       fontWeight: 700,
       fontFamily: 'Arial, sans-serif',
@@ -64,41 +73,50 @@ export const COVER_LAYOUT = {
         paddingX: 16,
         height: 46,
         radius: 8,
-        bg: '#ffffff',
-        textColor: '#141416',
+        bg: '#141416',
+        textColor: '#ffffff',
       },
     },
+    supportLine: {
+      text: 'PHONE + DESKTOP',
+      baselineY: 788,
+      fontSize: 54,
+      fontWeight: 700,
+      fontFamily: 'Arial, sans-serif',
+      letterSpacing: 0,
+      color: '#ffffff',
+    },
     episodeBar: {
-      top: 852,
+      top: 838,
       height: 78,
       gap: 8,
       labelRatio: 0.6,
       radius: 8,
+      textOffsetY: 4,
       label: 'EPISODE',
       labelBg: 'rgba(255, 255, 255, 0.16)',
-      codeBg: 'rgba(255, 255, 255, 0.16)',
+      codeBg: '#ffffff',
       labelColor: '#ffffff',
-      codeColor: '#ffffff',
+      codeColor: '#141416',
       fontSize: 38,
       fontWeight: 700,
       fontFamily: 'Arial, sans-serif',
     },
     metaRow: {
-      top: 962,
-      iconSize: 44,
-      iconGap: 14,
-      // Material Symbols Outlined ligatures (browser canvas shapes them).
-      icons: ['graphic_eq', 'share', 'deployed_code', 'rainy'],
+      top: 994,
+      iconSize: 34,
+      iconTextGap: 16,
       iconFontFamily: '"Material Symbols Outlined"',
       iconColor: 'rgba(255,255,255,0.95)',
-      specGap: 28,
       specFontSize: 27,
-      specLineGap: 38,
+      specLineGap: 44,
       specFontFamily: 'Arial, sans-serif',
       specColor: 'rgba(255,255,255,0.95)',
-      specLines: [
-        'FULL HD [1080px / 1920px]',
-        '2K / QUAD HD [1440px / 2560px]',
+      specRows: [
+        { icon: 'smartphone', text: 'FULL HD [1080px / 1920px]' },
+        { icon: 'smartphone', text: '2K / QUAD HD [1440px / 2560px]' },
+        { icon: 'desktop_windows', text: 'FULL HD [1920px / 1080px]' },
+        { icon: 'desktop_windows', text: '2K / QUAD HD [2560px / 1440px]' },
       ],
     },
   },
@@ -212,6 +230,26 @@ export function renderCover(
   const screenH = MOCK_SCREEN.height * phoneScale;
   const screenRadius = MOCK_SCREEN_CORNER_RADIUS * phoneScale;
 
+  // Add a soft directional shadow so the device sits above the background
+  // without turning into a heavy card.
+  const phoneShadow = COVER_LAYOUT.phone.shadow;
+  ctx.save();
+  ctx.shadowColor = phoneShadow.color;
+  ctx.shadowBlur = phoneShadow.blur;
+  ctx.shadowOffsetX = phoneShadow.offsetX;
+  ctx.shadowOffsetY = phoneShadow.offsetY;
+  ctx.fillStyle = phoneShadow.fill;
+  roundRectPath(
+    ctx,
+    phoneX + phoneShadow.inset,
+    phoneY + phoneShadow.inset,
+    phoneW - phoneShadow.inset * 2,
+    phoneH - phoneShadow.inset * 2,
+    phoneShadow.radius * phoneScale,
+  );
+  ctx.fill();
+  ctx.restore();
+
   // Clip the wallpaper to the rounded screen so corners are trimmed,
   // then overlay the frame (dynamic island occludes from the PNG).
   ctx.save();
@@ -267,6 +305,12 @@ function drawLeftBlock(
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
+  // --- Device support line ---
+  const supportLine = block.supportLine;
+  ctx.fillStyle = supportLine.color;
+  ctx.font = `${supportLine.fontWeight} ${supportLine.fontSize}px ${supportLine.fontFamily}`;
+  drawTrackedText(ctx, supportLine.text, left, supportLine.baselineY, supportLine.letterSpacing);
+
   // --- EPISODE bar (label cell + code cell, shared width) ---
   const bar = block.episodeBar;
   const labelW = Math.round(width * bar.labelRatio);
@@ -284,49 +328,40 @@ function drawLeftBlock(
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
   ctx.fillStyle = bar.labelColor;
-  ctx.fillText(bar.label, left + labelW / 2, bar.top + bar.height / 2 + 1);
+  ctx.fillText(bar.label, left + labelW / 2, bar.top + bar.height / 2 + bar.textOffsetY);
   ctx.fillStyle = bar.codeColor;
-  ctx.fillText(episodeCode, codeX + codeW / 2, bar.top + bar.height / 2 + 1);
+  ctx.fillText(episodeCode, codeX + codeW / 2, bar.top + bar.height / 2 + bar.textOffsetY);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
   // --- Meta row: 4 line icons + spec text ---
   const meta = block.metaRow;
-  const iconCount = meta.icons.length;
-  const iconsTotalW = iconCount * meta.iconSize + (iconCount - 1) * meta.iconGap;
-  const iconCenterY = meta.top + meta.iconSize / 2;
-  drawMetaIcons(ctx, left, iconCenterY, meta);
-
-  const specX = left + iconsTotalW + meta.specGap;
   ctx.fillStyle = meta.specColor;
   ctx.font = `${meta.specFontSize}px ${meta.specFontFamily}`;
   ctx.textBaseline = 'middle';
-  const totalSpecH = (meta.specLines.length - 1) * meta.specLineGap;
-  const firstLineY = iconCenterY - totalSpecH / 2;
-  meta.specLines.forEach((line, index) => {
-    ctx.fillText(line, specX, firstLineY + index * meta.specLineGap);
+  meta.specRows.forEach((row, index) => {
+    const centerY = meta.top + index * meta.specLineGap;
+    drawSpecIcon(ctx, left, centerY, row.icon, meta);
+    ctx.fillText(row.text, left + meta.iconSize + meta.iconTextGap, centerY);
   });
   ctx.textBaseline = 'alphabetic';
 }
 
-// Material Symbols Outlined icon row. Ligature names are shaped by the
-// browser canvas text engine into glyphs.
-function drawMetaIcons(
+// Material Symbols Outlined ligatures are shaped by the browser canvas
+// text engine into glyphs.
+function drawSpecIcon(
   ctx: CanvasRenderingContext2D,
   x: number,
   centerY: number,
+  iconName: string,
   meta: typeof COVER_LAYOUT.leftBlock.metaRow,
 ): void {
   ctx.save();
   ctx.fillStyle = meta.iconColor;
   ctx.font = `${meta.iconSize}px ${meta.iconFontFamily}`;
-  ctx.textAlign = 'center';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  const step = meta.iconSize + meta.iconGap;
-  meta.icons.forEach((name, index) => {
-    const cx = x + index * step + meta.iconSize / 2;
-    ctx.fillText(name, cx, centerY + 1);
-  });
+  ctx.fillText(iconName, x, centerY + 1);
   ctx.restore();
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';

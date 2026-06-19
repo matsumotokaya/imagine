@@ -51,6 +51,8 @@
   "factoryProjectsLoadFailed": "載入 Content Factory 專案失敗",
   "factoryProjectUpdatedAt": "更新",
   "factoryProjectSourceAsset": "官方素材",
+  "factoryAdmin": "Content Factory Admin",
+  "factoryCoverLab": "Cover Lab",
   "factorySlotPreparing": "準備中",
   "factoryPublish": "Publish",
   "factoryPublished": "Published",

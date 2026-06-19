@@ -51,6 +51,8 @@
   "factoryProjectsLoadFailed": "Content Factory 프로젝트를 불러오지 못했습니다",
   "factoryProjectUpdatedAt": "업데이트",
   "factoryProjectSourceAsset": "공식 소재",
+  "factoryAdmin": "Content Factory Admin",
+  "factoryCoverLab": "Cover Lab",
   "factorySlotPreparing": "준비 중",
   "factoryPublish": "Publish",
   "factoryPublished": "Published",

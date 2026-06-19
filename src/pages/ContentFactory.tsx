@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { SitePageLayout } from '../components/SitePageLayout';
 import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
@@ -19,7 +19,7 @@ import type { DefaultImage } from '../types/image-library';
 import type { ProductionProjectSummary } from '../types/production-project';
 import { invalidateBannerCollectionQueries } from '../hooks/useBanners';
 import { invalidateProductionProjectQueries } from '../hooks/useProductionProjects';
-import { ensureProductionProjectFromAsset, getPrimaryEditBanner, loadRecentProductionProjects } from '../utils/productionProjects';
+import { ensureProductionProjectFromAsset, loadRecentProductionProjects } from '../utils/productionProjects';
 
 type FactoryStatus = 'live' | 'manual' | 'planned';
 
@@ -151,7 +151,6 @@ function statusLabel(status: FactoryStatus): string {
 
 export function ContentFactory() {
   const { user, profile, loading } = useAuth();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [officialAssets, setOfficialAssets] = useState<DefaultImage[]>([]);
   const [recentProjects, setRecentProjects] = useState<ProductionProjectSummary[]>([]);
@@ -345,30 +344,38 @@ export function ContentFactory() {
       return;
     }
 
+    const projectKey = `${asset.work_series_slug}:${asset.work_number}:${asset.variant_number ?? 1}`;
+    const existingProject = recentProjectMap.get(projectKey);
+    if (existingProject) {
+      const confirmed = window.confirm(
+        `A project for ${formatWorkVariantLabel(asset)} already exists. Overwrite its banners and outputs?`,
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setCreatingProjectAssetId(asset.id);
     setStatusError(null);
     setStatusMessage(null);
 
     try {
-      const result = await ensureProductionProjectFromAsset(asset, user.id);
+      const result = await ensureProductionProjectFromAsset(asset, user.id, {
+        overwriteExisting: Boolean(existingProject),
+      });
       await invalidateBannerCollectionQueries(queryClient);
       await invalidateProductionProjectQueries(queryClient);
       await loadProjects();
 
       const label = `${formatSeriesLabel(asset.work_series_slug)} ${formatWorkDisplayCode(asset.work_number ?? 0)}-${asset.variant_number ?? 1}`;
-      const primaryBanner = getPrimaryEditBanner(result.banners);
-      if (result.createdProject) {
+      if (existingProject) {
+        setStatusMessage(`Overwrote production project for ${label}. Draft banners and outputs were reset.`);
+      } else if (result.createdProject) {
         setStatusMessage(`Created production project for ${label}. ${result.createdBannerCount} draft banners are now in your designs.`);
       } else if (result.createdBannerCount > 0) {
         setStatusMessage(`Updated ${label}. Missing draft banners were generated and attached to the existing project.`);
       } else {
         setStatusMessage(`Project for ${label} already exists and is in sync.`);
-      }
-
-      if (primaryBanner) {
-        navigate(`/banner/${primaryBanner.bannerId}`, {
-          state: { returnTo: '/admin/content-factory' },
-        });
       }
     } catch (error) {
       console.error('Failed to create production project:', error);
@@ -398,8 +405,8 @@ export function ContentFactory() {
     <SitePageLayout maxWidthClassName="max-w-7xl" mainClassName="py-12 sm:px-6">
       <div className="mx-auto w-full max-w-6xl">
         <div className="mb-8">
-          <Link to="/admin" className="text-blue-600 hover:text-blue-700 inline-block mb-4">
-            &larr; Back to Admin
+          <Link to="/mydesign/factory" className="text-blue-600 hover:text-blue-700 inline-block mb-4">
+            &larr; Back to Content Factory List
           </Link>
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -432,6 +439,15 @@ export function ContentFactory() {
                   <div className="text-sm font-semibold text-gray-900">Open Editor</div>
                   <div className="mt-1 text-xs text-gray-500 text-pretty">
                     portrait / landscape master の調整へ移動
+                  </div>
+                </Link>
+                <Link
+                  to="/admin/cover-lab"
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-left hover:bg-gray-100 transition-colors"
+                >
+                  <div className="text-sm font-semibold text-gray-900">Open Cover Lab</div>
+                  <div className="mt-1 text-xs text-gray-500 text-pretty">
+                    headless cover のレイアウトと文言をその場で確認・微調整
                   </div>
                 </Link>
               </div>
@@ -684,7 +700,11 @@ export function ContentFactory() {
                 </div>
               ) : (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {officialAssets.map((asset) => (
+                  {officialAssets.map((asset) => {
+                    const projectKey = `${asset.work_series_slug}:${asset.work_number}:${asset.variant_number ?? 1}`;
+                    const linkedProject = recentProjectMap.get(projectKey);
+
+                    return (
                     <div key={asset.id} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                       <div className="aspect-[4/3] bg-white">
                         <img
@@ -695,15 +715,11 @@ export function ContentFactory() {
                         />
                       </div>
                       <div className="space-y-2 p-4">
-                        {(() => {
-                          const projectKey = `${asset.work_series_slug}:${asset.work_number}:${asset.variant_number ?? 1}`;
-                          const linkedProject = recentProjectMap.get(projectKey);
-                          return linkedProject ? (
-                            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[11px] text-green-800">
-                              Project exists · {linkedProject.banners.length} linked banners
-                            </div>
-                          ) : null;
-                        })()}
+                        {linkedProject ? (
+                          <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[11px] text-green-800">
+                            Project exists · {linkedProject.banners.length} linked banners
+                          </div>
+                        ) : null}
                         <div className="flex items-center justify-between gap-3">
                           <div className="truncate text-sm font-semibold text-gray-900">{asset.name}</div>
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
@@ -731,11 +747,16 @@ export function ContentFactory() {
                           disabled={creatingProjectAssetId === asset.id || !asset.work_series_slug || !asset.work_number}
                           className="w-full rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          {creatingProjectAssetId === asset.id ? 'Creating Project...' : 'Create, Sync, and Open Editor'}
+                          {creatingProjectAssetId === asset.id
+                            ? 'Saving Project...'
+                            : linkedProject
+                              ? 'Overwrite Existing Project'
+                              : 'Create Project'}
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </section>

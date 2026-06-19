@@ -7,6 +7,7 @@ import {
   loadImageElement,
   renderCover,
 } from './coverComposer';
+import { syncGalleryWorkFromProductionProject } from './gallerySync';
 import type {
   ProductionOutputRole,
   ProductionProjectStatus,
@@ -359,13 +360,14 @@ export async function buildProductionOutputs(project: ProductionProjectSummary):
   }
 }
 
-export async function publishProductionProject(projectId: string): Promise<void> {
+export async function publishProductionProject(project: ProductionProjectSummary): Promise<void> {
   const publishedAt = new Date().toISOString();
+  await syncGalleryWorkFromProductionProject(project);
 
   await upsertDeliveryPackage({
-    projectId,
+    projectId: project.project.id,
     status: 'published',
     publishedAt,
   });
-  await updateProjectStatus(projectId, 'published');
+  await updateProjectStatus(project.project.id, 'published');
 }

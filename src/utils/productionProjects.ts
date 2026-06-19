@@ -10,12 +10,13 @@ import type {
 } from '../types/production-project';
 import { formatSeriesLabel, formatWorkDisplayCode } from './libraryAssets';
 import { getFitToCanvasPlacement } from './canvasPlacement';
-import { appendCacheBust } from './storage';
+import { appendCacheBust, extractStoragePathFromPublicUrl, removeFilesFromBucket } from './storage';
 
 const DEFAULT_DRAFT_CANVAS_COLOR = '#808080';
 const INSTAGRAM_FEED_ACCENT_COLOR = '#fd4d52';
 const INSTAGRAM_FEED_TITLE_FONT = '"Bebas Neue", sans-serif';
 const INSTAGRAM_FEED_BODY_FONT = 'Arial';
+const BANNER_ASSET_BUCKET = 'user-images';
 const INSTAGRAM_FEED_BODY_TEXT =
   '- Your design is 99% done.You just finish it.\n' +
   '- Phone wallpapers, SNS headers, custom icons and thumbnails. \n' +
@@ -317,6 +318,15 @@ type EnsureProjectResult = {
   createdBannerCount: number;
 };
 
+type EnsureProjectOptions = {
+  overwriteExisting?: boolean;
+};
+
+type ProjectStorageFile = {
+  bucket: string;
+  path: string;
+};
+
 function getPrimaryEditBanner(
   banners: ProductionProjectSummary['banners'],
 ): ProductionProjectSummary['banners'][number] | undefined {
@@ -338,9 +348,267 @@ function getPrimaryEditBanner(
   return banners[0];
 }
 
+async function removeProjectStorageFiles(files: ProjectStorageFile[]): Promise<void> {
+  if (files.length === 0) {
+    return;
+  }
+
+  const bucketMap = new Map<string, string[]>();
+  for (const file of files) {
+    const paths = bucketMap.get(file.bucket) ?? [];
+    paths.push(file.path);
+    bucketMap.set(file.bucket, paths);
+  }
+
+  for (const [bucket, paths] of bucketMap) {
+    await removeFilesFromBucket(bucket, paths);
+  }
+}
+
+async function deleteBannerRecords(params: {
+  bannerIds: string[];
+  userId: string;
+}): Promise<void> {
+  if (params.bannerIds.length === 0) {
+    return;
+  }
+
+  const supabase = await getSupabase();
+  const { data: banners, error: bannersError } = await supabase
+    .from('banners')
+    .select('id, thumbnail_url, fullres_url')
+    .in('id', params.bannerIds)
+    .eq('user_id', params.userId);
+
+  if (bannersError) {
+    throw bannersError;
+  }
+
+  const files: ProjectStorageFile[] = [];
+  for (const banner of banners ?? []) {
+    const thumbnailPath = extractStoragePathFromPublicUrl(
+      banner.thumbnail_url ?? '',
+      BANNER_ASSET_BUCKET,
+    );
+    const fullresPath = extractStoragePathFromPublicUrl(
+      banner.fullres_url ?? '',
+      BANNER_ASSET_BUCKET,
+    );
+
+    if (thumbnailPath) {
+      files.push({ bucket: BANNER_ASSET_BUCKET, path: thumbnailPath });
+    }
+    if (fullresPath) {
+      files.push({ bucket: BANNER_ASSET_BUCKET, path: fullresPath });
+    }
+  }
+
+  const { error: deleteError } = await supabase
+    .from('banners')
+    .delete()
+    .in('id', params.bannerIds)
+    .eq('user_id', params.userId);
+
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  try {
+    await removeProjectStorageFiles(files);
+  } catch (storageError) {
+    console.warn('Failed to remove production banner assets:', storageError);
+  }
+}
+
+async function collectProjectOutputFiles(projectId: string): Promise<ProjectStorageFile[]> {
+  const supabase = await getSupabase();
+  const { data, error } = await supabase
+    .from('production_outputs')
+    .select('storage_bucket, storage_path')
+    .eq('project_id', projectId);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? [])
+    .filter((row): row is { storage_bucket: string; storage_path: string } =>
+      Boolean(row.storage_bucket) && Boolean(row.storage_path))
+    .map((row) => ({
+      bucket: row.storage_bucket,
+      path: row.storage_path,
+    }));
+}
+
+async function resetExistingProductionProject(params: {
+  projectId: string;
+  asset: DefaultImage;
+  userId: string;
+}): Promise<void> {
+  const supabase = await getSupabase();
+  const outputFiles = await collectProjectOutputFiles(params.projectId);
+
+  const { data: bannerLinks, error: bannerLinksError } = await supabase
+    .from('production_project_banners')
+    .select('banner_id')
+    .eq('project_id', params.projectId);
+
+  if (bannerLinksError) {
+    throw bannerLinksError;
+  }
+
+  const bannerIds = Array.from(new Set((bannerLinks ?? []).map((row) => row.banner_id)));
+
+  await deleteBannerRecords({
+    bannerIds,
+    userId: params.userId,
+  });
+
+  try {
+    await removeProjectStorageFiles(outputFiles);
+  } catch (storageError) {
+    console.warn('Failed to remove production output files during overwrite:', storageError);
+  }
+
+  const { error: outputsDeleteError } = await supabase
+    .from('production_outputs')
+    .delete()
+    .eq('project_id', params.projectId);
+
+  if (outputsDeleteError) {
+    throw outputsDeleteError;
+  }
+
+  const { error: assetsDeleteError } = await supabase
+    .from('production_project_assets')
+    .delete()
+    .eq('project_id', params.projectId);
+
+  if (assetsDeleteError) {
+    throw assetsDeleteError;
+  }
+
+  const { error: packageUpdateError } = await supabase
+    .from('production_delivery_packages')
+    .update({
+      status: 'draft',
+      cover_output_id: null,
+      published_at: null,
+    })
+    .eq('project_id', params.projectId);
+
+  if (packageUpdateError) {
+    throw packageUpdateError;
+  }
+
+  const { error: projectUpdateError } = await supabase
+    .from('production_projects')
+    .update({
+      status: 'draft',
+      title: buildProjectTitle(params.asset),
+    })
+    .eq('id', params.projectId);
+
+  if (projectUpdateError) {
+    throw projectUpdateError;
+  }
+}
+
+async function createDraftBannersForProject(params: {
+  projectId: string;
+  asset: DefaultImage;
+  userId: string;
+}): Promise<{ createdBannerIds: string[]; createdBannerLinkIds: string[]; createdBannerCount: number }> {
+  const supabase = await getSupabase();
+
+  for (let index = 0; index < DRAFT_BANNER_SPECS.length; index += 1) {
+    await supabase.rpc('increment_display_orders', { p_user_id: params.userId });
+  }
+
+  const bannerRows = DRAFT_BANNER_SPECS.map((spec, index) => ({
+    user_id: params.userId,
+    name: buildBannerName(params.asset, spec.role),
+    template: spec.template,
+    elements: buildDraftBannerElements(params.asset, spec),
+    canvas_color: spec.canvasColor,
+    is_public: false,
+    display_order: index + 1,
+  }));
+
+  const { data: insertedBanners, error: bannersInsertError } = await supabase
+    .from('banners')
+    .insert(bannerRows)
+    .select('id');
+
+  if (bannersInsertError) {
+    throw bannersInsertError;
+  }
+
+  const createdBannerIds = (insertedBanners ?? []).map((banner) => banner.id);
+  const bannerLinks = createdBannerIds.map((bannerId, index) => ({
+    project_id: params.projectId,
+    banner_id: bannerId,
+    role: DRAFT_BANNER_SPECS[index].role,
+    sort_order: DRAFT_BANNER_SPECS[index].sortOrder,
+    is_active: true,
+  }));
+
+  const { data: insertedLinks, error: bannerLinksError } = await supabase
+    .from('production_project_banners')
+    .insert(bannerLinks)
+    .select('id');
+
+  if (bannerLinksError) {
+    throw bannerLinksError;
+  }
+
+  return {
+    createdBannerIds,
+    createdBannerLinkIds: (insertedLinks ?? []).map((link) => link.id),
+    createdBannerCount: createdBannerIds.length,
+  };
+}
+
+export async function deleteProductionProject(projectId: string, userId: string): Promise<void> {
+  const supabase = await getSupabase();
+  const outputFiles = await collectProjectOutputFiles(projectId);
+
+  const { data: bannerLinks, error: bannerLinksError } = await supabase
+    .from('production_project_banners')
+    .select('banner_id')
+    .eq('project_id', projectId);
+
+  if (bannerLinksError) {
+    throw bannerLinksError;
+  }
+
+  const bannerIds = Array.from(new Set((bannerLinks ?? []).map((row) => row.banner_id)));
+
+  await deleteBannerRecords({
+    bannerIds,
+    userId,
+  });
+
+  try {
+    await removeProjectStorageFiles(outputFiles);
+  } catch (storageError) {
+    console.warn('Failed to remove production output files during delete:', storageError);
+  }
+
+  const { error: deleteProjectError } = await supabase
+    .from('production_projects')
+    .delete()
+    .eq('id', projectId);
+
+  if (deleteProjectError) {
+    throw deleteProjectError;
+  }
+}
+
 export async function ensureProductionProjectFromAsset(
   asset: DefaultImage,
   userId: string,
+  options: EnsureProjectOptions = {},
 ): Promise<EnsureProjectResult> {
   if (!asset.work_series_slug || !asset.work_number) {
     throw new Error('This asset is missing work metadata.');
@@ -406,102 +674,45 @@ export async function ensureProductionProjectFromAsset(
       if (packageError) {
         throw packageError;
       }
+    } else if (!options.overwriteExisting) {
+      const [summary] = await loadProjectSummariesByIds([project.id]);
+      return {
+        project,
+        banners: summary?.banners ?? [],
+        sourceAsset: summary?.sourceAsset ?? null,
+        createdProject: false,
+        createdBannerCount: 0,
+      };
+    } else if (options.overwriteExisting) {
+      await resetExistingProductionProject({
+        projectId: project.id,
+        asset,
+        userId,
+      });
     }
 
-    const { data: existingAssetLinks, error: existingAssetLinksError } = await supabase
+    const { error: assetInsertError } = await supabase
       .from('production_project_assets')
-      .select('id, default_image_id, is_primary')
-      .eq('project_id', project.id)
-      .eq('role', 'source')
-      .order('sort_order', { ascending: true });
+      .insert({
+        project_id: project.id,
+        default_image_id: asset.id,
+        role: 'source',
+        sort_order: 0,
+        is_primary: true,
+      });
 
-    if (existingAssetLinksError) {
-      throw existingAssetLinksError;
+    if (assetInsertError) {
+      throw assetInsertError;
     }
 
-    const hasSameAssetLink = (existingAssetLinks ?? []).some((link) => link.default_image_id === asset.id);
-    const hasPrimarySource = (existingAssetLinks ?? []).some((link) => link.is_primary);
-
-    if (!hasSameAssetLink) {
-      const { error: assetInsertError } = await supabase
-        .from('production_project_assets')
-        .insert({
-          project_id: project.id,
-          default_image_id: asset.id,
-          role: 'source',
-          sort_order: existingAssetLinks?.length ?? 0,
-          is_primary: !hasPrimarySource,
-        });
-
-      if (assetInsertError) {
-        throw assetInsertError;
-      }
-    }
-
-    const { data: existingBannerLinks, error: existingBannerLinksError } = await supabase
-      .from('production_project_banners')
-      .select('*')
-      .eq('project_id', project.id)
-      .eq('is_active', true);
-
-    if (existingBannerLinksError) {
-      throw existingBannerLinksError;
-    }
-
-    const existingRoles = new Set((existingBannerLinks ?? []).map((row) => row.role));
-    const missingSpecs = DRAFT_BANNER_SPECS.filter((spec) => !existingRoles.has(spec.role));
-
-    if (missingSpecs.length > 0) {
-      for (let index = 0; index < missingSpecs.length; index += 1) {
-        await supabase.rpc('increment_display_orders', { p_user_id: userId });
-      }
-
-      const bannerRows = missingSpecs.map((spec, index) => ({
-        user_id: userId,
-        name: buildBannerName(asset, spec.role),
-        template: spec.template,
-        elements: buildDraftBannerElements(asset, spec),
-        canvas_color: spec.canvasColor,
-        is_public: false,
-        display_order: index + 1,
-      }));
-
-      const { data: insertedBanners, error: bannersInsertError } = await supabase
-        .from('banners')
-        .insert(bannerRows)
-        .select('id, name');
-
-      if (bannersInsertError) {
-        throw bannersInsertError;
-      }
-
-      const banners = insertedBanners ?? [];
-      createdBannerCount = banners.length;
-      for (const banner of banners) {
-        createdBannerIds.push(banner.id);
-      }
-
-      const bannerLinks = banners.map((banner, index) => ({
-        project_id: project!.id,
-        banner_id: banner.id,
-        role: missingSpecs[index].role,
-        sort_order: missingSpecs[index].sortOrder,
-        is_active: true,
-      }));
-
-      const { data: insertedLinks, error: bannerLinksError } = await supabase
-        .from('production_project_banners')
-        .insert(bannerLinks)
-        .select('id');
-
-      if (bannerLinksError) {
-        throw bannerLinksError;
-      }
-
-      for (const link of insertedLinks ?? []) {
-        createdBannerLinkIds.push(link.id);
-      }
-    }
+    const createdDrafts = await createDraftBannersForProject({
+      projectId: project.id,
+      asset,
+      userId,
+    });
+    createdBannerCount = createdDrafts.createdBannerCount;
+    createdBannerIds.push(...createdDrafts.createdBannerIds);
+    createdBannerLinkIds.push(...createdDrafts.createdBannerLinkIds);
 
     const [summary] = await loadProjectSummariesByIds([project.id]);
     return {

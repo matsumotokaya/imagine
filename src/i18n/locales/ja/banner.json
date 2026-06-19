@@ -51,6 +51,8 @@
   "factoryProjectsLoadFailed": "Content Factory プロジェクトの読み込みに失敗しました",
   "factoryProjectUpdatedAt": "更新",
   "factoryProjectSourceAsset": "公式素材",
+  "factoryAdmin": "Content Factory Admin",
+  "factoryCoverLab": "Cover Lab",
   "factorySlotPreparing": "準備中",
   "factoryPublish": "Publish",
   "factoryPublished": "Published",

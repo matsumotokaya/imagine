@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { SitePageLayout } from '../components/SitePageLayout';
 import { GalleryTabs } from '../components/GalleryTabs';
 import { useAuth } from '../contexts/AuthContext';
+import { invalidateBannerCollectionQueries } from '../hooks/useBanners';
 import {
   invalidateProductionProjectQueries,
   useRecentProductionProjects,
@@ -13,6 +14,7 @@ import {
   buildProductionOutputs,
   publishProductionProject,
 } from '../utils/productionOutputBuilder';
+import { deleteProductionProject } from '../utils/productionProjects';
 import type { ProductionProjectBannerRole, ProductionProjectSummary, ProductionProjectStatus } from '../types/production-project';
 
 const PROJECT_LIMIT = 60;
@@ -166,7 +168,7 @@ export function FactoryProjectManager() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, profile, loading } = useAuth();
-  const [pendingByProject, setPendingByProject] = useState<Record<string, 'publish' | undefined>>({});
+  const [pendingByProject, setPendingByProject] = useState<Record<string, 'publish' | 'delete' | undefined>>({});
   const [messageByProject, setMessageByProject] = useState<Record<string, string | undefined>>({});
   const [errorByProject, setErrorByProject] = useState<Record<string, string | undefined>>({});
   const {
@@ -182,7 +184,7 @@ export function FactoryProjectManager() {
 
     try {
       const result = await buildProductionOutputs(entry);
-      await publishProductionProject(entry.project.id);
+      await publishProductionProject(entry);
       await invalidateProductionProjectQueries(queryClient);
       setMessageByProject((prev) => ({
         ...prev,
@@ -192,6 +194,41 @@ export function FactoryProjectManager() {
       setErrorByProject((prev) => ({
         ...prev,
         [entry.project.id]: error instanceof Error ? error.message : t('banner:factoryPublishFailed'),
+      }));
+    } finally {
+      setPendingByProject((prev) => ({ ...prev, [entry.project.id]: undefined }));
+    }
+  };
+
+  const handleDelete = async (entry: ProductionProjectSummary) => {
+    if (!user) {
+      return;
+    }
+
+    const title = entry.project.title ?? `${entry.project.work_series_slug} ${entry.project.work_display_code}-${entry.project.variant_number}`;
+    const confirmed = window.confirm(
+      `Delete "${title}" and all linked draft banners / outputs? This cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setPendingByProject((prev) => ({ ...prev, [entry.project.id]: 'delete' }));
+    setErrorByProject((prev) => ({ ...prev, [entry.project.id]: undefined }));
+    setMessageByProject((prev) => ({ ...prev, [entry.project.id]: undefined }));
+
+    try {
+      await deleteProductionProject(entry.project.id, user.id);
+      await invalidateBannerCollectionQueries(queryClient);
+      await invalidateProductionProjectQueries(queryClient);
+      setMessageByProject((prev) => ({
+        ...prev,
+        [entry.project.id]: 'Deleted project and all linked assets.',
+      }));
+    } catch (error) {
+      setErrorByProject((prev) => ({
+        ...prev,
+        [entry.project.id]: error instanceof Error ? error.message : 'Failed to delete project.',
       }));
     } finally {
       setPendingByProject((prev) => ({ ...prev, [entry.project.id]: undefined }));
@@ -227,6 +264,20 @@ export function FactoryProjectManager() {
             <p className="mt-2 text-sm text-gray-400 text-pretty">
               {t('banner:factoryProjectsDescription')}
             </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/admin/content-factory"
+              className="inline-flex items-center rounded-lg border border-gray-700 bg-[#171717] px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-indigo-500 hover:text-white"
+            >
+              {t('banner:factoryAdmin')}
+            </Link>
+            <Link
+              to="/admin/cover-lab"
+              className="inline-flex items-center rounded-lg border border-gray-700 bg-[#171717] px-3 py-2 text-sm font-medium text-gray-200 transition-colors hover:border-indigo-500 hover:text-white"
+            >
+              {t('banner:factoryCoverLab')}
+            </Link>
           </div>
         </div>
 
@@ -288,6 +339,7 @@ export function FactoryProjectManager() {
               const title = entry.project.title ?? `${entry.project.work_series_slug} ${entry.project.work_display_code}-${entry.project.variant_number}`;
               const pendingAction = pendingByProject[entry.project.id];
               const isPublished = entry.project.status === 'published';
+              const isPending = !!pendingAction;
 
               return (
                 <section
@@ -318,14 +370,24 @@ export function FactoryProjectManager() {
                       <button
                         type="button"
                         onClick={() => void handlePublish(entry)}
-                        disabled={!!pendingAction || isPublished}
+                        disabled={isPending}
                         className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {isPublished
-                          ? t('banner:factoryPublished')
-                          : pendingAction === 'publish'
-                            ? t('banner:factoryPublishing')
+                        {pendingAction === 'publish'
+                          ? t('banner:factoryPublishing')
+                          : isPublished
+                            ? 'Republish'
                             : t('banner:factoryPublish')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(entry)}
+                        disabled={isPending}
+                        className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm font-medium text-red-100 transition-colors hover:bg-red-900/60 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {pendingAction === 'delete'
+                          ? 'Deleting...'
+                          : 'Delete Project'}
                       </button>
                     </div>
                   </div>

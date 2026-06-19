@@ -51,6 +51,8 @@
   "factoryProjectsLoadFailed": "Failed to load Content Factory projects",
   "factoryProjectUpdatedAt": "Updated",
   "factoryProjectSourceAsset": "Source asset",
+  "factoryAdmin": "Content Factory Admin",
+  "factoryCoverLab": "Cover Lab",
   "factorySlotPreparing": "Preparing",
   "factoryPublish": "Publish",
   "factoryPublished": "Published",
