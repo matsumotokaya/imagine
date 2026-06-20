@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -89,6 +89,10 @@ function statusLabel(status: ProductionProjectStatus): string {
   switch (status) {
     case 'in_progress':
       return 'In Progress';
+    case 'review':
+      return 'Review';
+    case 'ready':
+      return 'Ready';
     case 'published':
       return 'Published';
     case 'archived':
@@ -96,6 +100,29 @@ function statusLabel(status: ProductionProjectStatus): string {
     default:
       return 'Draft';
   }
+}
+
+function chipClass(active: boolean): string {
+  return active
+    ? 'rounded-full border border-indigo-500 bg-indigo-600/20 px-3 py-1 text-xs font-medium text-indigo-200'
+    : 'rounded-full border border-gray-700 bg-[#171717] px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-gray-100';
+}
+
+type SortOrder = 'latest' | 'oldest';
+
+// Sort by work number first, then variant number, so the same work's
+// variants stay grouped. "latest" puts the highest number on top.
+function compareByNumber(
+  a: ProductionProjectSummary,
+  b: ProductionProjectSummary,
+  order: SortOrder,
+): number {
+  const workDiff = (a.project.work_number ?? 0) - (b.project.work_number ?? 0);
+  const diff =
+    workDiff !== 0
+      ? workDiff
+      : (a.project.variant_number ?? 0) - (b.project.variant_number ?? 0);
+  return order === 'latest' ? -diff : diff;
 }
 
 type FactoryBannerCardProps = {
@@ -176,6 +203,25 @@ export function FactoryProjectManager() {
     isLoading,
     error,
   } = useRecentProductionProjects(PROJECT_LIMIT, !!user && profile?.role === 'admin');
+  const [statusFilter, setStatusFilter] = useState<ProductionProjectStatus | 'all'>('all');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('latest');
+
+  // Only offer status chips that actually exist in the loaded projects.
+  const availableStatuses = useMemo(() => {
+    const present = new Set<ProductionProjectStatus>();
+    for (const entry of projects) {
+      present.add(entry.project.status);
+    }
+    return Array.from(present);
+  }, [projects]);
+
+  const visibleProjects = useMemo(() => {
+    const filtered =
+      statusFilter === 'all'
+        ? projects
+        : projects.filter((entry) => entry.project.status === statusFilter);
+    return [...filtered].sort((a, b) => compareByNumber(a, b, sortOrder));
+  }, [projects, statusFilter, sortOrder]);
 
   const handlePublish = async (entry: ProductionProjectSummary) => {
     setPendingByProject((prev) => ({ ...prev, [entry.project.id]: 'publish' }));
@@ -259,7 +305,7 @@ export function FactoryProjectManager() {
         <div className="mb-6 flex items-end justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-gray-100 text-balance">
-              {t('banner:factoryProjectsTitle')} ({projects.length})
+              {t('banner:factoryProjectsTitle')} ({statusFilter === 'all' ? projects.length : visibleProjects.length})
             </h2>
             <p className="mt-2 text-sm text-gray-400 text-pretty">
               {t('banner:factoryProjectsDescription')}
@@ -280,6 +326,52 @@ export function FactoryProjectManager() {
             </Link>
           </div>
         </div>
+
+        {!isLoading && !error && projects.length > 0 && (
+          <div className="mb-6 flex flex-col gap-3 border-b border-gray-800 pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                {t('banner:factoryFilterStatusLabel')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className={chipClass(statusFilter === 'all')}
+              >
+                {t('banner:factoryFilterAll')}
+              </button>
+              {availableStatuses.map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter(status)}
+                  className={chipClass(statusFilter === status)}
+                >
+                  {statusLabel(status)}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="mr-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                {t('banner:factorySortLabel')}
+              </span>
+              <button
+                type="button"
+                onClick={() => setSortOrder('latest')}
+                className={chipClass(sortOrder === 'latest')}
+              >
+                {t('banner:factorySortLatest')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortOrder('oldest')}
+                className={chipClass(sortOrder === 'oldest')}
+              >
+                {t('banner:factorySortOldest')}
+              </button>
+            </div>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="grid gap-6 lg:grid-cols-2">
@@ -332,9 +424,13 @@ export function FactoryProjectManager() {
               {t('banner:backToDesigns')}
             </button>
           </div>
+        ) : visibleProjects.length === 0 ? (
+          <div className="rounded-2xl border border-gray-800 bg-[#171717] p-10 text-center text-sm text-gray-400">
+            {t('banner:factoryNoMatchingProjects')}
+          </div>
         ) : (
           <div className="space-y-6">
-            {projects.map((entry) => {
+            {visibleProjects.map((entry) => {
               const bannersByRole = new Map(entry.banners.map((banner) => [banner.role, banner]));
               const title = entry.project.title ?? `${entry.project.work_series_slug} ${entry.project.work_display_code}-${entry.project.variant_number}`;
               const pendingAction = pendingByProject[entry.project.id];

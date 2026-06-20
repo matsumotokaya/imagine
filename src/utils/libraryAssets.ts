@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase';
+import type { DefaultImage } from '../types/image-library';
 
 export const WORK_SERIES_OPTIONS = [
   { value: 'episode', label: 'Episode' },
@@ -95,6 +96,12 @@ export const formatWorkVariantLabel = (asset: {
   return `${formatSeriesLabel(asset.work_series_slug)} ${code}-${variant}`;
 };
 
+// width / height / file_size are integer columns. Canvas elements can carry
+// fractional sizes after resizing, so coerce to integers before inserting to
+// avoid Postgres 22P02 (invalid input syntax for type integer).
+const toIntOrNull = (value: number | null | undefined): number | null =>
+  value === null || value === undefined || Number.isNaN(value) ? null : Math.round(value);
+
 export const parseTagInput = (value: string): string[] => {
   return value
     .split(',')
@@ -123,9 +130,9 @@ export const insertUserImageRecord = async ({
     user_id: userId,
     name,
     storage_path: storagePath,
-    width,
-    height,
-    file_size: fileSize,
+    width: toIntOrNull(width),
+    height: toIntOrNull(height),
+    file_size: toIntOrNull(fileSize),
     asset_scope: assetScope,
     source_context: sourceContext,
     work_series_slug: workSeriesSlug,
@@ -155,25 +162,31 @@ export const insertDefaultImageRecord = async ({
   assetRole = 'general',
   tags = [],
   notes = null,
-}: InsertDefaultImageRecordInput): Promise<void> => {
+}: InsertDefaultImageRecordInput): Promise<DefaultImage> => {
   const supabase = await getSupabase();
-  const { error } = await supabase.from('default_images').insert({
-    name,
-    storage_path: storagePath,
-    width,
-    height,
-    file_size: fileSize,
-    source_context: sourceContext,
-    work_series_slug: workSeriesSlug,
-    work_number: workNumber,
-    variant_number: variantNumber,
-    asset_role: assetRole,
-    tags,
-    notes,
-  });
+  const { data, error } = await supabase
+    .from('default_images')
+    .insert({
+      name,
+      storage_path: storagePath,
+      width: toIntOrNull(width),
+      height: toIntOrNull(height),
+      file_size: toIntOrNull(fileSize),
+      source_context: sourceContext,
+      work_series_slug: workSeriesSlug,
+      work_number: workNumber,
+      variant_number: variantNumber,
+      asset_role: assetRole,
+      tags,
+      notes,
+    })
+    .select('*')
+    .single();
 
   if (error) {
     console.error('Failed to insert default_images record:', error);
     throw error;
   }
+
+  return data as DefaultImage;
 };

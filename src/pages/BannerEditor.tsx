@@ -1359,7 +1359,9 @@ export const BannerEditor = () => {
       setSelectedElementIds([shadowId]);
       immediateSave();
     } catch (error) {
+      // Surface failures instead of swallowing them silently.
       console.error('Failed to generate shadow:', error);
+      alert(t('message:error.imageGenerationFailed'));
     } finally {
       setIsGeneratingShadow(false);
     }

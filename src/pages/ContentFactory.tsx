@@ -268,12 +268,27 @@ export function ContentFactory() {
       return;
     }
 
+    // Upload now also creates the variant project in one step. If a project
+    // for this variant already exists, the upload overwrites its banners and
+    // outputs, so confirm before proceeding.
+    const projectKey = `${seriesSlug}:${parsedWorkNumber}:${parsedVariantNumber}`;
+    const willOverwrite = recentProjectMap.has(projectKey);
+    if (willOverwrite) {
+      const confirmed = window.confirm(
+        `A project for ${formatSeriesLabel(seriesSlug)} ${formatWorkDisplayCode(parsedWorkNumber)}-${parsedVariantNumber} already exists. Uploading will overwrite its draft banners and outputs. Continue?`,
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setUploading(true);
     setStatusError(null);
     setStatusMessage(null);
 
     let successCount = 0;
     let failCount = 0;
+    const insertedAssets: DefaultImage[] = [];
 
     try {
       const tags = parseTagInput(tagInput);
@@ -299,7 +314,7 @@ export function ContentFactory() {
           });
           URL.revokeObjectURL(objectUrl);
 
-          await insertDefaultImageRecord({
+          const insertedAsset = await insertDefaultImageRecord({
             name: file.name,
             storagePath,
             width: img.width,
@@ -314,6 +329,7 @@ export function ContentFactory() {
             notes: notes.trim() || null,
           });
 
+          insertedAssets.push(insertedAsset);
           successCount += 1;
         } catch (error) {
           console.error('Factory upload failed:', file.name, error);
@@ -324,13 +340,47 @@ export function ContentFactory() {
       await loadOfficialAssets();
       setSelectedFiles([]);
 
-      if (successCount > 0 && failCount === 0) {
-        setStatusMessage(`Uploaded ${successCount} official asset(s) for ${formatSeriesLabel(seriesSlug)} ${workCode}-${parsedVariantNumber}.`);
-      } else if (successCount > 0) {
-        setStatusMessage(`Uploaded ${successCount} asset(s). ${failCount} file(s) failed.`);
-      } else {
+      const label = `${formatSeriesLabel(seriesSlug)} ${workCode}-${parsedVariantNumber}`;
+
+      if (successCount === 0) {
         setStatusError('All uploads failed. Check storage permissions and metadata schema.');
+        return;
       }
+
+      // Upload and project creation are now a single step. Pick the primary
+      // asset (character cutout if present) as the project source.
+      const primaryAsset =
+        insertedAssets.find((asset) => asset.asset_role === 'character_cutout') ?? insertedAssets[0] ?? null;
+
+      let projectNote = '';
+      if (primaryAsset) {
+        try {
+          const result = await ensureProductionProjectFromAsset(primaryAsset, user.id, {
+            overwriteExisting: willOverwrite,
+          });
+          await invalidateBannerCollectionQueries(queryClient);
+          await invalidateProductionProjectQueries(queryClient);
+          await loadProjects();
+
+          projectNote = willOverwrite
+            ? ' Existing project was overwritten with fresh draft banners.'
+            : ` Created a production project with ${result.createdBannerCount} draft banners.`;
+        } catch (projectError) {
+          console.error('Failed to create production project after upload:', projectError);
+          setStatusError(
+            `Uploaded ${successCount} asset(s) for ${label}, but project creation failed: ${
+              projectError instanceof Error ? projectError.message : 'unknown error'
+            }. Use "Create Project" on the asset card to retry.`,
+          );
+          return;
+        }
+      }
+
+      const uploadNote =
+        failCount === 0
+          ? `Uploaded ${successCount} official asset(s) for ${label}.`
+          : `Uploaded ${successCount} asset(s) (${failCount} failed) for ${label}.`;
+      setStatusMessage(`${uploadNote}${projectNote} You can now return to the Content Factory list.`);
     } catch (error) {
       console.error('Failed to upload official assets:', error);
       setStatusError(error instanceof Error ? error.message : 'Upload failed.');
@@ -408,51 +458,9 @@ export function ContentFactory() {
           <Link to="/mydesign/factory" className="text-blue-600 hover:text-blue-700 inline-block mb-4">
             &larr; Back to Content Factory List
           </Link>
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-              <div className="max-w-3xl">
-                <span className="inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
-                  Admin Only
-                </span>
-                <h1 className="mt-4 text-3xl font-bold text-gray-900 text-balance">
-                  Content Factory
-                </h1>
-                <p className="mt-3 text-sm text-gray-600 text-pretty">
-                  WHATIF 公式作品の制作パイプラインを、一般ユーザー向け template 導線と混ぜずに管理するための運用画面です。
-                  最初の入口は、作品 metadata 付きで premium asset を登録することです。
-                </p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:w-[22rem]">
-                <Link
-                  to="/banners"
-                  className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-left hover:bg-gray-100 transition-colors"
-                >
-                  <div className="text-sm font-semibold text-gray-900">Open Banner Library</div>
-                  <div className="mt-1 text-xs text-gray-500 text-pretty">
-                    保存済み artwork と素材の混在状況を確認
-                  </div>
-                </Link>
-                <Link
-                  to="/banner"
-                  className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-left hover:bg-gray-100 transition-colors"
-                >
-                  <div className="text-sm font-semibold text-gray-900">Open Editor</div>
-                  <div className="mt-1 text-xs text-gray-500 text-pretty">
-                    portrait / landscape master の調整へ移動
-                  </div>
-                </Link>
-                <Link
-                  to="/admin/cover-lab"
-                  className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4 text-left hover:bg-gray-100 transition-colors"
-                >
-                  <div className="text-sm font-semibold text-gray-900">Open Cover Lab</div>
-                  <div className="mt-1 text-xs text-gray-500 text-pretty">
-                    headless cover のレイアウトと文言をその場で確認・微調整
-                  </div>
-                </Link>
-              </div>
-            </div>
-          </div>
+          <h1 className="text-3xl font-bold text-white text-balance">
+            Content Factory
+          </h1>
         </div>
 
         <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
@@ -562,7 +570,7 @@ export function ContentFactory() {
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-gray-500 text-pretty">
               Target: <span className="font-medium text-gray-700">{formatSeriesLabel(seriesSlug)} {formatWorkDisplayCode(Number(workNumber) || 0)}-{variantNumber || '1'}</span>
-              <span className="ml-2">Stored in `default_images` as a premium asset.</span>
+              <span className="ml-2">Stored in `default_images` and a variant project is created automatically.</span>
             </div>
             <button
               type="button"
@@ -570,7 +578,7 @@ export function ContentFactory() {
               disabled={uploading}
               className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {uploading ? 'Uploading...' : 'Upload Official Assets'}
+              {uploading ? 'Uploading & Creating Project...' : 'Upload & Create Project'}
             </button>
           </div>
 
@@ -589,6 +597,95 @@ export function ContentFactory() {
           {statusError && (
             <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {statusError}
+            </div>
+          )}
+        </section>
+
+        <section className="mb-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 text-balance">Recent Official Assets</h2>
+              <p className="mt-1 text-sm text-gray-500 text-pretty">
+                Content Factory から登録した画像を起点に、variant 単位の production project と 4 種の draft banner を作る。
+              </p>
+            </div>
+            <Link
+              to="/banner"
+              className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Open Editor
+            </Link>
+          </div>
+
+          {assetsLoading ? (
+            <div className="mt-4 text-sm text-gray-500">Loading official assets...</div>
+          ) : assetsError ? (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {assetsError}
+            </div>
+          ) : officialAssets.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
+              No official assets yet. Upload character cutouts here first.
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {officialAssets.map((asset) => {
+                const projectKey = `${asset.work_series_slug}:${asset.work_number}:${asset.variant_number ?? 1}`;
+                const linkedProject = recentProjectMap.get(projectKey);
+
+                return (
+                <div key={asset.id} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+                  <div className="aspect-[4/3] bg-white">
+                    <img
+                      src={getSupabaseStoragePublicUrl('default-images', asset.storage_path)}
+                      alt={asset.name}
+                      className="h-full w-full object-contain"
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="space-y-2 p-4">
+                    {linkedProject ? (
+                      <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[11px] text-green-800">
+                        Project exists · {linkedProject.banners.length} linked banners
+                      </div>
+                    ) : null}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="truncate text-sm font-semibold text-gray-900">{asset.name}</div>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                        {asset.asset_role ?? 'general'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {formatWorkVariantLabel(asset)}
+                    </div>
+                    <div className="text-xs text-gray-500 tabular-nums">
+                      {asset.width ?? '-'} x {asset.height ?? '-'}
+                    </div>
+                    {asset.tags && asset.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {asset.tags.slice(0, 4).map((tag) => (
+                          <span key={tag} className="rounded-full bg-white px-2 py-0.5 text-[10px] text-gray-600">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleCreateProject(asset)}
+                      disabled={creatingProjectAssetId === asset.id || !asset.work_series_slug || !asset.work_number}
+                      className="w-full rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {creatingProjectAssetId === asset.id
+                        ? 'Saving Project...'
+                        : linkedProject
+                          ? 'Overwrite Existing Project'
+                          : 'Create Project'}
+                    </button>
+                  </div>
+                </div>
+                );
+              })}
             </div>
           )}
         </section>
@@ -670,95 +767,6 @@ export function ContentFactory() {
                   </div>
                 ))}
               </div>
-            </section>
-
-            <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 text-balance">Recent Official Assets</h2>
-                  <p className="mt-1 text-sm text-gray-500 text-pretty">
-                    Content Factory から登録した画像を起点に、variant 単位の production project と 4 種の draft banner を作る。
-                  </p>
-                </div>
-                <Link
-                  to="/banner"
-                  className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                >
-                  Open Editor
-                </Link>
-              </div>
-
-              {assetsLoading ? (
-                <div className="mt-4 text-sm text-gray-500">Loading official assets...</div>
-              ) : assetsError ? (
-                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {assetsError}
-                </div>
-              ) : officialAssets.length === 0 ? (
-                <div className="mt-4 rounded-xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500">
-                  No official assets yet. Upload character cutouts here first.
-                </div>
-              ) : (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  {officialAssets.map((asset) => {
-                    const projectKey = `${asset.work_series_slug}:${asset.work_number}:${asset.variant_number ?? 1}`;
-                    const linkedProject = recentProjectMap.get(projectKey);
-
-                    return (
-                    <div key={asset.id} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-                      <div className="aspect-[4/3] bg-white">
-                        <img
-                          src={getSupabaseStoragePublicUrl('default-images', asset.storage_path)}
-                          alt={asset.name}
-                          className="h-full w-full object-contain"
-                          loading="lazy"
-                        />
-                      </div>
-                      <div className="space-y-2 p-4">
-                        {linkedProject ? (
-                          <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-[11px] text-green-800">
-                            Project exists · {linkedProject.banners.length} linked banners
-                          </div>
-                        ) : null}
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="truncate text-sm font-semibold text-gray-900">{asset.name}</div>
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                            {asset.asset_role ?? 'general'}
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {formatWorkVariantLabel(asset)}
-                        </div>
-                        <div className="text-xs text-gray-500 tabular-nums">
-                          {asset.width ?? '-'} x {asset.height ?? '-'}
-                        </div>
-                        {asset.tags && asset.tags.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
-                            {asset.tags.slice(0, 4).map((tag) => (
-                              <span key={tag} className="rounded-full bg-white px-2 py-0.5 text-[10px] text-gray-600">
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleCreateProject(asset)}
-                          disabled={creatingProjectAssetId === asset.id || !asset.work_series_slug || !asset.work_number}
-                          className="w-full rounded-xl bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {creatingProjectAssetId === asset.id
-                            ? 'Saving Project...'
-                            : linkedProject
-                              ? 'Overwrite Existing Project'
-                              : 'Create Project'}
-                        </button>
-                      </div>
-                    </div>
-                    );
-                  })}
-                </div>
-              )}
             </section>
 
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
