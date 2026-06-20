@@ -24,8 +24,11 @@ function buildEditorTemplate(template: TemplateRecord): Template {
 }
 
 interface UseOpenTemplateOptions {
-  // Shown when a guest or free user opens a premium template.
+  // Shown when a logged-in free user (or a user without a profile) opens a premium template.
   onUpgradeRequired: () => void;
+  // Called when a logged-out visitor opens a premium template, to send them to
+  // login instead of the upgrade modal. Falls back to onUpgradeRequired when omitted.
+  onLoginRequired?: () => void;
   // Shown when a guest already has a different in-progress guest design.
   onGuestConflict: (template: TemplateRecord) => void;
   // Toggles the per-card "creating..." spinner (no-op when not needed).
@@ -36,12 +39,11 @@ interface UseOpenTemplateOptions {
 // /banner?template=<id> direct-open receiver. Mirrors the original
 // handleTemplateClick: getById resolution + premium guard + login/guest branch.
 export function useOpenTemplate(options: UseOpenTemplateOptions) {
-  const { onUpgradeRequired, onGuestConflict, onCreatingChange } = options;
+  const { onUpgradeRequired, onLoginRequired, onGuestConflict, onCreatingChange } = options;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { t } = useTranslation(['banner']);
   const { user, profile } = useAuth();
-  const isGuest = !user;
 
   return useCallback(
     async (template: TemplateRecord) => {
@@ -53,14 +55,16 @@ export function useOpenTemplate(options: UseOpenTemplateOptions) {
         return;
       }
 
-      const guestAllowed = !isPremiumTemplate(resolvedTemplate);
-      if (isGuest && !guestAllowed) {
-        onUpgradeRequired();
-        return;
-      }
-
+      // Premium guard:
+      // - Logged-out visitor -> send to login (so premium members can sign in and
+      //   continue), falling back to the upgrade modal when no login handler is given.
+      // - Logged-in user without a premium subscription -> upgrade modal.
       if (isPremiumTemplate(resolvedTemplate)) {
-        if (!user || !profile || profile.subscriptionTier === 'free') {
+        if (!user) {
+          (onLoginRequired ?? onUpgradeRequired)();
+          return;
+        }
+        if (!profile || profile.subscriptionTier === 'free') {
           onUpgradeRequired();
           return;
         }
@@ -101,6 +105,6 @@ export function useOpenTemplate(options: UseOpenTemplateOptions) {
         onCreatingChange?.(null);
       }
     },
-    [navigate, queryClient, t, user, profile, isGuest, onUpgradeRequired, onGuestConflict, onCreatingChange],
+    [navigate, queryClient, t, user, profile, onUpgradeRequired, onLoginRequired, onGuestConflict, onCreatingChange],
   );
 }

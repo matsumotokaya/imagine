@@ -349,6 +349,13 @@ export const BannerEditor = () => {
   // design conflict we overwrite, matching the GuestLimitModal confirm behavior.
   const openTemplateFromQuery = useOpenTemplate({
     onUpgradeRequired: () => setShowUpgradeModal(true),
+    onLoginRequired: () => {
+      // Logged-out visitor opened a premium template via ?template link.
+      // Send to login and return to this exact ?template URL afterwards, so a
+      // premium member can sign in and continue straight into the editor.
+      const redirectPath = `${location.pathname}${location.search}`;
+      navigate(`/auth?redirect=${encodeURIComponent(redirectPath)}`);
+    },
     onGuestConflict: (template) => {
       navigate('/banner', {
         state: {
