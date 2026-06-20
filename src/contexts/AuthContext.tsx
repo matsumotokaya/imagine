@@ -3,6 +3,7 @@ import type { User, Session } from '@supabase/supabase-js';
 import { getSupabase } from '../utils/supabase';
 import { useProfile } from '../hooks/useProfile';
 import { queryClient } from '../lib/queryClient';
+import { readSsoCookie, writeSsoCookie, clearSsoCookie } from '../utils/ssoCookie';
 
 interface UserProfile {
   id: string;
@@ -66,7 +67,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         console.log('[AuthContext] Getting initial session...');
-        const { data: { session } } = await supabase.auth.getSession();
+        let { data: { session } } = await supabase.auth.getSession();
+
+        if (!isActive) {
+          return;
+        }
+
+        // Cross-subdomain SSO: if there is no local session but the shared
+        // cookie (set by whatif-ep.xyz) carries tokens, adopt that session.
+        // Any failure (invalid/expired tokens) falls back to logged-out.
+        if (!session) {
+          try {
+            const ssoTokens = readSsoCookie();
+            if (ssoTokens) {
+              const { data: ssoData, error: ssoError } = await supabase.auth.setSession({
+                access_token: ssoTokens.access_token,
+                refresh_token: ssoTokens.refresh_token,
+              });
+              if (!ssoError && ssoData.session) {
+                session = ssoData.session;
+              } else {
+                // Stale cookie: ignore it and clear so it stops being retried.
+                clearSsoCookie();
+              }
+            }
+          } catch {
+            // Ignore SSO failures; continue as logged-out.
+          }
+        }
 
         if (!isActive) {
           return;
@@ -79,10 +107,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         const {
           data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+        } = supabase.auth.onAuthStateChange((event, nextSession) => {
           setSession(nextSession);
           setUser(nextSession?.user ?? null);
           setAuthLoading(false);
+
+          // Keep the shared SSO cookie in sync (side-effect only; never
+          // call setSession from here to avoid auth-event loops).
+          try {
+            if (event === 'SIGNED_OUT' || !nextSession) {
+              clearSsoCookie();
+            } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+              if (nextSession.access_token && nextSession.refresh_token) {
+                writeSsoCookie({
+                  access_token: nextSession.access_token,
+                  refresh_token: nextSession.refresh_token,
+                });
+              }
+            }
+          } catch {
+            // Never let SSO cookie sync break auth.
+          }
         });
 
         unsubscribe = () => subscription.unsubscribe();
@@ -176,6 +221,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (error) {
       console.error('Error signing out:', error.message);
     }
+    // Ensure the shared SSO cookie is removed even if no event fires.
+    clearSsoCookie();
     queryClient.clear();
   };
 
