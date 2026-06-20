@@ -84,6 +84,41 @@ npm run build
 - The saved download asset reuses the same PNG export path as the editor download action
 - Both saved assets use fixed Storage paths with overwrite semantics, so old revisions do not accumulate
 
+## Gallery Integration (whatif-ep.xyz ⇄ app.whatif-ep.xyz)
+
+IMAGINE is linked with the WHATIF Gallery (`whatif-ep.xyz`, a Next.js app sharing the same
+Supabase project) so a published work can be opened directly in the IMAGINE editor for
+non-credit / resize edits.
+
+- **Template promotion**: On Content Factory **Publish**, the project's `instagram_feed`
+  banner is promoted to a `premium` row in `templates` (idempotency key
+  `templates.production_project_id`), and an `imagine_starter` offer is written into the
+  Gallery's `work_offers` with `target_url = https://app.whatif-ep.xyz/banner?template=<id>`.
+  The Gallery's "イラストを編集" (Edit in IMAGINE) button then lights up automatically — no
+  Gallery code change needed per work.
+- **Direct open** (`/banner?template=<id>`): opens that template through the shared
+  `useOpenTemplate` flow (same premium guard as the template gallery). Not logged in →
+  redirected to login and returned to the URL; logged-in free → upgrade modal; premium → edit.
+- **Cross-subdomain SSO**: Gallery and IMAGINE are different subdomains, so Supabase
+  sessions (localStorage) are not shared by default. A shared cookie `wf-sso-token` on
+  `.whatif-ep.xyz` carries the Supabase access/refresh tokens: Gallery writes it on
+  sign-in / refresh and IMAGINE adopts it via `setSession()` on boot, so no re-login is
+  needed. Enabled by setting `VITE_SSO_COOKIE_DOMAIN` (IMAGINE) and
+  `NEXT_PUBLIC_SSO_COOKIE_DOMAIN` (Gallery) to `.whatif-ep.xyz` in Vercel. When unset, the
+  cookie is host-only and SSO is effectively off (harmless). See [docs/sso-dev.md](docs/sso-dev.md)
+  for local testing with hosts-based pseudo-subdomains.
+
+  > **Refactoring note — the current SSO is intentionally simple.** It is a pragmatic
+  > implementation; a more robust approach exists. Trade-offs to revisit:
+  > - The refresh token sits in a **non-HttpOnly** cookie (the SPA must read it in JS),
+  >   exposing it to XSS. A future version should use an HttpOnly, server-mediated session.
+  > - Both apps run `autoRefreshToken` against the same cookie, so refresh-token rotation
+  >   can race when both tabs are open at once. Designate a single refresh owner, or make
+  >   IMAGINE read-only of the cookie.
+  > - The custom cookie + manual chunk-splitting diverges from Supabase's `@supabase/ssr`
+  >   standard. Consider unifying both apps' auth storage on one cookie scheme, moving
+  >   IMAGINE onto `@supabase/ssr`, or consolidating both apps onto a single domain.
+
 ## Project Structure
 
 ```
@@ -107,9 +142,12 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_STRIPE_MODE=live
 VITE_STRIPE_PRICE_ID=price_1ThWnuQ2eK2Q8eWbgAEh4fwE
 VITE_THE_CLUB_R2_BASE_URL=https://pub-9339dc326a024891a297479881e66962.r2.dev
+VITE_SSO_COOKIE_DOMAIN=.whatif-ep.xyz
 ```
 
 `VITE_THE_CLUB_R2_BASE_URL` is optional (defaults to the current R2 public endpoint). It is used for the temporary The Club thumbnail preview section.
+
+`VITE_SSO_COOKIE_DOMAIN` enables cross-subdomain SSO with the Gallery (see "Gallery Integration"). Set it to `.whatif-ep.xyz` in production. When unset, the SSO cookie is host-only and session sharing is off (harmless for local dev).
 
 When local development points at the production Supabase project, keep `VITE_STRIPE_MODE=live` so billing behavior matches production.
 
@@ -141,6 +179,7 @@ See [docs/DATABASE.md](docs/DATABASE.md) for full schema details.
 - [Development Guide](docs/DEVELOPMENT.md) - Architecture, conventions, adding features
 - [Performance Guide](docs/PERFORMANCE.md) - React Query cache settings, optimization history
 - [Database Schema](docs/DATABASE.md) - Full table definitions and RLS policies
+- [SSO Dev Testing](docs/sso-dev.md) - Local testing of cross-subdomain session sharing with the Gallery
 
 ## Renewal Note
 
