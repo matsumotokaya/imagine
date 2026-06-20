@@ -7,7 +7,8 @@ import {
   loadImageElement,
   renderCover,
 } from './coverComposer';
-import { syncGalleryWorkFromProductionProject } from './gallerySync';
+import { syncGalleryWorkFromProductionProject, upsertImagineStarterOffer } from './gallerySync';
+import { templateStorage } from './templateStorage';
 import type {
   ProductionOutputRole,
   ProductionProjectStatus,
@@ -362,7 +363,26 @@ export async function buildProductionOutputs(project: ProductionProjectSummary):
 
 export async function publishProductionProject(project: ProductionProjectSummary): Promise<void> {
   const publishedAt = new Date().toISOString();
-  await syncGalleryWorkFromProductionProject(project);
+  const { workId, variantId } = await syncGalleryWorkFromProductionProject(project);
+
+  // Promote the instagram_feed banner into a public premium template, then point
+  // the Gallery "Edit in IMAGINE" offer at it via /banner?template=<id>.
+  const feedBanner = project.banners.find((banner) => banner.role === 'instagram_feed');
+  if (!feedBanner) {
+    throw new Error('Missing instagram_feed banner for IMAGINE template promotion.');
+  }
+
+  const templateId = await templateStorage.upsertTemplateFromProductionProject({
+    productionProjectId: project.project.id,
+    bannerId: feedBanner.bannerId,
+    name: feedBanner.name,
+  });
+
+  if (!templateId) {
+    throw new Error('Failed to promote production project to IMAGINE template.');
+  }
+
+  await upsertImagineStarterOffer({ workId, variantId, templateId });
 
   await upsertDeliveryPackage({
     projectId: project.project.id,

@@ -48,6 +48,12 @@ function buildWorkSlug(seriesSlug: string, displayCode: string): string {
   return `${seriesSlug}-${displayCode}`.toLowerCase();
 }
 
+const IMAGINE_APP_BASE_URL = 'https://app.whatif-ep.xyz';
+
+function buildImagineStarterTargetUrl(templateId: string): string {
+  return `${IMAGINE_APP_BASE_URL}/banner?template=${templateId}`;
+}
+
 function buildWallpaperTargetUrl(
   seriesSlug: string,
   displayCode: string,
@@ -90,7 +96,7 @@ async function loadCurrentOutputs(projectId: string): Promise<ProductionOutputRo
 
 export async function syncGalleryWorkFromProductionProject(
   project: ProductionProjectSummary,
-): Promise<void> {
+): Promise<{ workId: string; variantId: string }> {
   const supabase = await getSupabase();
   const series = await loadSeries(project.project.work_series_slug);
   const outputs = await loadCurrentOutputs(project.project.id);
@@ -299,6 +305,63 @@ export async function syncGalleryWorkFromProductionProject(
       .from('production_delivery_packages')
       .update({ gallery_offer_ref: wallpaperOfferId })
       .eq('project_id', project.project.id);
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  return { workId, variantId };
+}
+
+// Upsert the imagine_starter offer that lights up the Gallery "Edit in IMAGINE"
+// button. Keyed on variant_id + offer_type to mirror the wallpaper offer above.
+// The target_url embeds the promoted template id so Gallery needs no changes.
+export async function upsertImagineStarterOffer(params: {
+  workId: string;
+  variantId: string;
+  templateId: string;
+}): Promise<void> {
+  const supabase = await getSupabase();
+
+  const offerPayload = {
+    work_id: params.workId,
+    variant_id: params.variantId,
+    offer_type: 'imagine_starter',
+    plan_type: 'premium',
+    status: 'ready',
+    title: 'Edit in IMAGINE',
+    description: 'Published from Content Factory production outputs.',
+    target_ref: params.templateId,
+    target_url: buildImagineStarterTargetUrl(params.templateId),
+    sort_order: 2,
+  };
+
+  const { data: existingOfferData, error: existingOfferError } = await supabase
+    .from('work_offers')
+    .select('id')
+    .eq('variant_id', params.variantId)
+    .eq('offer_type', 'imagine_starter')
+    .maybeSingle();
+
+  if (existingOfferError) {
+    throw existingOfferError;
+  }
+
+  const existingOfferId = (existingOfferData as WorkOfferRow | null)?.id ?? null;
+  if (existingOfferId) {
+    const { error } = await supabase
+      .from('work_offers')
+      .update(offerPayload)
+      .eq('id', existingOfferId);
+
+    if (error) {
+      throw error;
+    }
+  } else {
+    const { error } = await supabase
+      .from('work_offers')
+      .insert(offerPayload);
 
     if (error) {
       throw error;

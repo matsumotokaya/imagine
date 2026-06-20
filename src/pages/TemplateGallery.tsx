@@ -12,14 +12,13 @@ import { LikeButton } from '../components/LikeButton';
 import { DemoCanvas } from '../components/DemoCanvas';
 import { GuestLimitModal } from '../components/GuestLimitModal';
 import { TemplateWallpaperExporter } from '../components/TemplateWallpaperExporter';
-import { invalidateBannerCollectionQueries } from '../hooks/useBanners';
 import { useTemplates, templateKeys } from '../hooks/useTemplates';
+import { useOpenTemplate } from '../hooks/useOpenTemplate';
 import { DEFAULT_TEMPLATES } from '../templates/defaultTemplates';
 import type { Template, TemplateRecord } from '../types/template';
 import { useAuth } from '../contexts/AuthContext';
 import { THE_CLUB_ENTRY_URL, THE_CLUB_THUMBNAILS } from '../data/theClubThumbnails';
-import { bannerStorage } from '../utils/bannerStorage';
-import { hasGuestDesignConflict, isPremiumTemplate } from '../utils/guestDesign';
+import { isPremiumTemplate } from '../utils/guestDesign';
 import { templateStorage } from '../utils/templateStorage';
 import { filterBySize, getAspectClass, getAvailableSizeCategories, getGridCols } from '../utils/sizeCategories';
 
@@ -110,63 +109,11 @@ export const TemplateGallery = () => {
     };
   };
 
-  const handleTemplateClick = async (template: TemplateRecord) => {
-    const resolvedTemplate = template.elements
-      ? template
-      : await templateStorage.getById(template.id);
-    if (!resolvedTemplate?.elements) {
-      alert(t('banner:templateLoadFailed'));
-      return;
-    }
-
-    const guestAllowed = !isPremiumTemplate(resolvedTemplate);
-    if (isGuest && !guestAllowed) {
-      setShowUpgradeModal(true);
-      return;
-    }
-
-    if (isPremiumTemplate(resolvedTemplate)) {
-      if (!user || !profile || profile.subscriptionTier === 'free') {
-        setShowUpgradeModal(true);
-        return;
-      }
-    }
-
-    // Fire-and-forget: increment open count
-    templateStorage.incrementOpenCount(template.id);
-
-    const editorTemplate = buildEditorTemplate(resolvedTemplate);
-    const templateElements = JSON.parse(JSON.stringify(resolvedTemplate.elements || []));
-
-    if (!user) {
-      if (hasGuestDesignConflict(resolvedTemplate.id)) {
-        setPendingGuestTemplate(resolvedTemplate);
-        return;
-      }
-
-      navigate('/banner', {
-        state: {
-          template: editorTemplate,
-          elements: templateElements,
-          canvasColor: resolvedTemplate.canvasColor,
-          name: resolvedTemplate.name,
-          templateId: resolvedTemplate.id,
-        },
-      });
-      return;
-    }
-
-    setTemplateActionId(template.id);
-    try {
-      const created = await bannerStorage.createFromTemplate(resolvedTemplate, editorTemplate);
-      if (created) {
-        await invalidateBannerCollectionQueries(queryClient);
-        navigate(`/banner/${created.id}`);
-      }
-    } finally {
-      setTemplateActionId(null);
-    }
-  };
+  const handleTemplateClick = useOpenTemplate({
+    onUpgradeRequired: () => setShowUpgradeModal(true),
+    onGuestConflict: (template) => setPendingGuestTemplate(template),
+    onCreatingChange: setTemplateActionId,
+  });
 
   const handleTemplateWallpaperDownload = async (template: TemplateRecord) => {
     const resolvedTemplate = template.elements

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo, type RefObject } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import debounce from 'lodash.debounce';
 import { Header } from '../components/Header';
@@ -18,6 +18,7 @@ import { useZoomControl } from '../hooks/useZoomControl';
 import { useElementOperations } from '../hooks/useElementOperations';
 import { useAuth } from '../contexts/AuthContext';
 import { GUEST_STORAGE_KEY } from '../utils/guestDesign';
+import { useOpenTemplate } from '../hooks/useOpenTemplate';
 import { isDataUrlImage, uploadDataUrlToBucket, uploadFileToBucket } from '../utils/storage';
 import { templateStorage } from '../utils/templateStorage';
 import { exportImageFromDataUrl } from '../utils/exportImage';
@@ -38,7 +39,8 @@ export const BannerEditor = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { profile, user, loading: authLoading } = useAuth();
   const { t } = useTranslation(['common', 'message', 'banner']);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [showDesktopModal, setShowDesktopModal] = useState(false);
@@ -298,6 +300,13 @@ export const BannerEditor = () => {
       return;
     }
 
+    // A ?template direct-open is in flight: defer entirely to the direct-open
+    // effect below. Restoring a stale localStorage guest design here would race
+    // and shadow the requested template (showing a previously edited episode).
+    if (searchParams.get('template')) {
+      return;
+    }
+
     try {
       const stored = localStorage.getItem(guestStorageKey);
       if (stored) {
@@ -333,7 +342,54 @@ export const BannerEditor = () => {
     }
 
     navigate('/');
-  }, [isGuest, guestState, navigate]);
+  }, [isGuest, guestState, navigate, searchParams]);
+
+  // Direct-open receiver for /banner?template=<id> (Gallery "Edit in IMAGINE").
+  // Reuses the shared open flow (premium guard + login/guest branch). On a guest
+  // design conflict we overwrite, matching the GuestLimitModal confirm behavior.
+  const openTemplateFromQuery = useOpenTemplate({
+    onUpgradeRequired: () => setShowUpgradeModal(true),
+    onGuestConflict: (template) => {
+      navigate('/banner', {
+        state: {
+          template: {
+            id: template.id,
+            name: template.name,
+            width: template.width,
+            height: template.height,
+            backgroundColor: template.canvasColor,
+            thumbnail: template.thumbnailUrl,
+            planType: template.planType,
+          },
+          elements: JSON.parse(JSON.stringify(template.elements || [])),
+          canvasColor: template.canvasColor,
+          name: template.name,
+          templateId: template.id,
+        },
+      });
+    },
+  });
+
+  const directOpenTemplateId = searchParams.get('template');
+  const directOpenHandledRef = useRef(false);
+  useEffect(() => {
+    // Only fire when arriving via a fresh ?template link (no editor state present).
+    if (!directOpenTemplateId || guestState || directOpenHandledRef.current) {
+      return;
+    }
+    // Wait for AuthContext to resolve before opening. Firing while auth is still
+    // loading would treat a logged-in (premium) user as a guest, wrongly hitting
+    // the premium guard / guest branch in useOpenTemplate.
+    if (authLoading) {
+      return;
+    }
+    directOpenHandledRef.current = true;
+    void openTemplateFromQuery({
+      id: directOpenTemplateId,
+      name: '',
+      canvasColor: '#FFFFFF',
+    });
+  }, [directOpenTemplateId, guestState, authLoading, openTemplateFromQuery]);
 
   // Initialize local state from React Query data ONLY when banner changes
   useEffect(() => {

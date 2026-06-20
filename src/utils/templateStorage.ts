@@ -96,6 +96,60 @@ export const templateStorage = {
     return data?.id || null;
   },
 
+  // Promote a production project's instagram_feed banner into a public premium
+  // template. Keyed on production_project_id so re-publishing the same project
+  // upserts the existing template instead of creating a duplicate. The mirrored
+  // fields match handleTemplateModalSave in BannerEditor.tsx (the manual path).
+  async upsertTemplateFromProductionProject(params: {
+    productionProjectId: string;
+    bannerId: string;
+    name: string;
+  }): Promise<string | null> {
+    const supabase = await getSupabase();
+
+    // The banner row holds elements/canvas_color directly, while width/height
+    // live inside the template jsonb (see bannerStorage.ts dbToBannerListItem).
+    const { data: banner, error: bannerError } = await supabase
+      .from('banners')
+      .select('elements, canvas_color, thumbnail_url, template')
+      .eq('id', params.bannerId)
+      .single();
+
+    if (bannerError || !banner) {
+      throw bannerError ?? new Error('Failed to load source banner for template promotion.');
+    }
+
+    const template = (banner.template ?? {}) as { width?: number; height?: number };
+    if (!template.width || !template.height) {
+      throw new Error('Source banner is missing canvas width/height for template promotion.');
+    }
+
+    const payload = {
+      production_project_id: params.productionProjectId,
+      name: params.name,
+      elements: banner.elements,
+      canvas_color: banner.canvas_color,
+      thumbnail_url: banner.thumbnail_url || null,
+      plan_type: 'premium' as const,
+      is_public: true,
+      width: template.width,
+      height: template.height,
+    };
+
+    const { data, error } = await supabase
+      .from('templates')
+      .upsert(payload, { onConflict: 'production_project_id' })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error promoting production project to template:', error);
+      throw error;
+    }
+
+    return data?.id || null;
+  },
+
   async updateTemplate(
     id: string,
     params: {
