@@ -365,8 +365,13 @@ export async function publishProductionProject(project: ProductionProjectSummary
   const publishedAt = new Date().toISOString();
   const { workId, variantId } = await syncGalleryWorkFromProductionProject(project);
 
-  // Promote the instagram_feed banner into a public premium template, then point
-  // the Gallery "Edit in IMAGINE" offer at it via /banner?template=<id>.
+  // Promote the editable drafts into public templates:
+  //  - instagram_feed     -> FREE: the Gallery "Edit in IMAGINE" entry, openable
+  //    by everyone (guests edit without saving, free users can save).
+  //  - portrait_master /
+  //    landscape_master    -> PREMIUM: the wallpaper-sized designs, so premium
+  //    members can freely edit them. These are NOT exposed as Gallery offers —
+  //    only the free feed links out from the Gallery.
   const feedBanner = project.banners.find((banner) => banner.role === 'instagram_feed');
   if (!feedBanner) {
     throw new Error('Missing instagram_feed banner for IMAGINE template promotion.');
@@ -375,11 +380,27 @@ export async function publishProductionProject(project: ProductionProjectSummary
   const templateId = await templateStorage.upsertTemplateFromProductionProject({
     productionProjectId: project.project.id,
     bannerId: feedBanner.bannerId,
+    bannerRole: 'instagram_feed',
     name: feedBanner.name,
+    planType: 'free',
   });
 
   if (!templateId) {
     throw new Error('Failed to promote production project to IMAGINE template.');
+  }
+
+  // Wallpaper-sized premium templates (best-effort; skip a role if its draft is
+  // missing so a partial project can still publish its free feed + offer).
+  for (const role of ['portrait_master', 'landscape_master'] as const) {
+    const wallpaperBanner = project.banners.find((banner) => banner.role === role);
+    if (!wallpaperBanner) continue;
+    await templateStorage.upsertTemplateFromProductionProject({
+      productionProjectId: project.project.id,
+      bannerId: wallpaperBanner.bannerId,
+      bannerRole: role,
+      name: wallpaperBanner.name,
+      planType: 'premium',
+    });
   }
 
   await upsertImagineStarterOffer({ workId, variantId, templateId });

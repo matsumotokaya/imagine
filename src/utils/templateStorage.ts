@@ -96,14 +96,19 @@ export const templateStorage = {
     return data?.id || null;
   },
 
-  // Promote a production project's instagram_feed banner into a public premium
-  // template. Keyed on production_project_id so re-publishing the same project
-  // upserts the existing template instead of creating a duplicate. The mirrored
-  // fields match handleTemplateModalSave in BannerEditor.tsx (the manual path).
+  // Promote one of a production project's editable drafts into a public template.
+  // The Gallery-linked instagram_feed is promoted as `free` (anyone can open it
+  // from the Gallery), while the wallpaper-sized portrait_master/landscape_master
+  // drafts are promoted as `premium` (premium members can freely edit them).
+  // Keyed on (production_project_id, banner_role) so re-publishing the same
+  // project upserts each role's template instead of creating duplicates. The
+  // mirrored fields match handleTemplateModalSave in BannerEditor.tsx (manual path).
   async upsertTemplateFromProductionProject(params: {
     productionProjectId: string;
     bannerId: string;
+    bannerRole: string;
     name: string;
+    planType: 'free' | 'premium';
   }): Promise<string | null> {
     const supabase = await getSupabase();
 
@@ -126,11 +131,12 @@ export const templateStorage = {
 
     const payload = {
       production_project_id: params.productionProjectId,
+      production_banner_role: params.bannerRole,
       name: params.name,
       elements: banner.elements,
       canvas_color: banner.canvas_color,
       thumbnail_url: banner.thumbnail_url || null,
-      plan_type: 'premium' as const,
+      plan_type: params.planType,
       is_public: true,
       width: template.width,
       height: template.height,
@@ -138,7 +144,7 @@ export const templateStorage = {
 
     const { data, error } = await supabase
       .from('templates')
-      .upsert(payload, { onConflict: 'production_project_id' })
+      .upsert(payload, { onConflict: 'production_project_id,production_banner_role' })
       .select('id')
       .single();
 

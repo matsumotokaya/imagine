@@ -328,7 +328,9 @@ export async function upsertImagineStarterOffer(params: {
     work_id: params.workId,
     variant_id: params.variantId,
     offer_type: 'imagine_starter',
-    plan_type: 'premium',
+    // Free: the feed starter template is open to everyone (the Gallery links it
+    // out and the IMAGINE premium guard no longer blocks guests/free users).
+    plan_type: 'free',
     status: 'ready',
     title: 'Edit in IMAGINE',
     description: 'Published from Content Factory production outputs.',
