@@ -68,5 +68,8 @@
   "createDesignFromTemplate": "Create a new design from a template",
   "templateLoadFailed": "Failed to load template",
   "like": "Like",
-  "unlike": "Unlike"
+  "unlike": "Unlike",
+  "guestNoticeTitle": "Guest mode",
+  "guestNoticeMessage": "You can download and use the artwork you edit. To save your edits, please log in.",
+  "guestNoticeConfirm": "Start editing"
 }

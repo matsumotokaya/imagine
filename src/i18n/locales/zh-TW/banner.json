@@ -68,5 +68,8 @@
   "createDesignFromTemplate": "請從範本建立新設計",
   "templateLoadFailed": "範本載入失敗",
   "like": "喜歡",
-  "unlike": "取消喜歡"
+  "unlike": "取消喜歡",
+  "guestNoticeTitle": "訪客模式說明",
+  "guestNoticeMessage": "您可以下載並使用編輯後的插畫。如需儲存編輯資料，請登入。",
+  "guestNoticeConfirm": "開始編輯"
 }

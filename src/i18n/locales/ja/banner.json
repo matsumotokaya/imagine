@@ -68,5 +68,8 @@
   "createDesignFromTemplate": "テンプレートから新しいデザインを作成してください",
   "templateLoadFailed": "テンプレートの読み込みに失敗しました",
   "like": "いいね",
-  "unlike": "いいね解除"
+  "unlike": "いいね解除",
+  "guestNoticeTitle": "ゲストモードのご案内",
+  "guestNoticeMessage": "編集したイラストはダウンロードしてご利用いただけます。編集データを保存するにはログインしてください。",
+  "guestNoticeConfirm": "編集をはじめる"
 }

@@ -10,6 +10,7 @@ import { MobileToolbar } from '../components/MobileToolbar';
 import { UpgradeModal } from '../components/UpgradeModal';
 import { DesktopRecommendedModal } from '../components/DesktopRecommendedModal';
 import { SaveAsTemplateModal } from '../components/SaveAsTemplateModal';
+import { GuestEditorNoticeModal } from '../components/GuestEditorNoticeModal';
 import { useBanner, useBatchSaveBanner, useUpdateBanner, useUpdateBannerName } from '../hooks/useBanners';
 import type { Banner, Template, CanvasElement, TextElement, ShapeElement, ImageElement } from '../types/template';
 import { useHistory } from '../hooks/useHistory';
@@ -46,12 +47,33 @@ export const BannerEditor = () => {
   const [showDesktopModal, setShowDesktopModal] = useState(false);
   const [isCanvasEditing, setIsCanvasEditing] = useState(false);
   const [showSaveAsTemplateModal, setShowSaveAsTemplateModal] = useState(false);
+  // Guest-only editor notice (download is fine, saving needs login). Shown once
+  // per browser session so it does not nag on every re-entry within a session.
+  const [showGuestNotice, setShowGuestNotice] = useState(false);
   const isGuest = !id;
   const guestStorageKey = GUEST_STORAGE_KEY;
   const locationState = location.state as BannerEditorLocationState | null;
   // Guests also return to the design list (BannerManager renders their single
   // localStorage design) so they can see their work was saved, instead of TOP.
   const editorReturnTo = isGuest ? '/mydesign' : (locationState?.returnTo || '/mydesign');
+
+  // Show the guest editor notice once the auth state has settled and only for
+  // actual logged-out visitors (not a logged-in user momentarily on /banner).
+  const GUEST_NOTICE_ACK_KEY = 'whatif_guest_editor_notice_ack';
+  useEffect(() => {
+    if (authLoading || user) return;
+    if (sessionStorage.getItem(GUEST_NOTICE_ACK_KEY)) return;
+    setShowGuestNotice(true);
+  }, [authLoading, user]);
+
+  const handleGuestNoticeConfirm = () => {
+    try {
+      sessionStorage.setItem(GUEST_NOTICE_ACK_KEY, '1');
+    } catch {
+      // sessionStorage may be unavailable (private mode); just dismiss.
+    }
+    setShowGuestNotice(false);
+  };
 
   const [guestTemplate, setGuestTemplate] = useState<Template | null>(null);
   const [guestName, setGuestName] = useState<string>('');
@@ -1860,6 +1882,15 @@ export const BannerEditor = () => {
         saveStatus={saveStatus}
         lastSaveError={lastSaveError}
         onRetry={immediateSave}
+      />
+
+      {/* Guest-only notice: download is fine, saving needs login */}
+      <GuestEditorNoticeModal
+        isOpen={showGuestNotice}
+        onConfirm={handleGuestNoticeConfirm}
+        title={t('banner:guestNoticeTitle')}
+        message={t('banner:guestNoticeMessage')}
+        confirmLabel={t('banner:guestNoticeConfirm')}
       />
 
       {/* Upgrade Modal */}

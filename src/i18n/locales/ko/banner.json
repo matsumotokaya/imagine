@@ -68,5 +68,8 @@
   "createDesignFromTemplate": "템플릿에서 새 디자인을 만들어 주세요",
   "templateLoadFailed": "템플릿 로드에 실패했습니다",
   "like": "좋아요",
-  "unlike": "좋아요 취소"
+  "unlike": "좋아요 취소",
+  "guestNoticeTitle": "게스트 모드 안내",
+  "guestNoticeMessage": "편집한 일러스트는 다운로드하여 사용하실 수 있습니다. 편집 데이터를 저장하려면 로그인해 주세요.",
+  "guestNoticeConfirm": "편집 시작"
 }
