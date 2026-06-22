@@ -86,9 +86,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               });
               if (!ssoError && ssoData.session) {
                 session = ssoData.session;
-              } else {
-                // Stale cookie: ignore it and clear so it stops being retried.
-                clearSsoCookie();
               }
             }
           } catch {
@@ -115,10 +112,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           // Keep the shared SSO cookie in sync (side-effect only; never
           // call setSession from here to avoid auth-event loops).
           try {
-            if (event === 'SIGNED_OUT' || !nextSession) {
+            // Only a confirmed sign-out should delete the shared cookie. A null
+            // local session on this subdomain does not prove the sibling app is
+            // also signed out, so clearing here can break cross-subdomain SSO.
+            if (event === 'SIGNED_OUT') {
               clearSsoCookie();
-            } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-              if (nextSession.access_token && nextSession.refresh_token) {
+            } else if (
+              event === 'INITIAL_SESSION' ||
+              event === 'SIGNED_IN' ||
+              event === 'TOKEN_REFRESHED'
+            ) {
+              if (nextSession?.access_token && nextSession?.refresh_token) {
                 writeSsoCookie({
                   access_token: nextSession.access_token,
                   refresh_token: nextSession.refresh_token,
