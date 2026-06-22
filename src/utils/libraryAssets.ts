@@ -33,6 +33,7 @@ interface InsertUserImageRecordInput {
   userId: string;
   name: string;
   storagePath: string;
+  thumbnailPath?: string | null;
   width: number | null;
   height: number | null;
   fileSize: number | null;
@@ -49,6 +50,7 @@ interface InsertUserImageRecordInput {
 interface InsertDefaultImageRecordInput {
   name: string;
   storagePath: string;
+  thumbnailPath?: string | null;
   width: number | null;
   height: number | null;
   fileSize: number | null;
@@ -113,6 +115,7 @@ export const insertUserImageRecord = async ({
   userId,
   name,
   storagePath,
+  thumbnailPath = null,
   width,
   height,
   fileSize,
@@ -130,6 +133,7 @@ export const insertUserImageRecord = async ({
     user_id: userId,
     name,
     storage_path: storagePath,
+    thumbnail_path: thumbnailPath,
     width: toIntOrNull(width),
     height: toIntOrNull(height),
     file_size: toIntOrNull(fileSize),
@@ -152,6 +156,7 @@ export const insertUserImageRecord = async ({
 export const insertDefaultImageRecord = async ({
   name,
   storagePath,
+  thumbnailPath = null,
   width,
   height,
   fileSize,
@@ -169,6 +174,7 @@ export const insertDefaultImageRecord = async ({
     .insert({
       name,
       storage_path: storagePath,
+      thumbnail_path: thumbnailPath,
       width: toIntOrNull(width),
       height: toIntOrNull(height),
       file_size: toIntOrNull(fileSize),

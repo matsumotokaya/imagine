@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { SitePageLayout } from '../components/SitePageLayout';
 import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
 import { extractStoragePathFromPublicUrl, uploadFileToBucket } from '../utils/storage';
+import { generateImageThumbnail } from '../utils/imageThumbnail';
 import {
   formatSeriesLabel,
   formatWorkDisplayCode,
@@ -291,6 +292,7 @@ export function ContentFactory() {
     const insertedAssets: DefaultImage[] = [];
 
     try {
+      const supabase = await getSupabase();
       const tags = parseTagInput(tagInput);
       const workCode = formatWorkDisplayCode(parsedWorkNumber);
       const variantCode = `${workCode}-${parsedVariantNumber}`;
@@ -314,9 +316,23 @@ export function ContentFactory() {
           });
           URL.revokeObjectURL(objectUrl);
 
+          // Generate and upload a JPEG thumbnail (max 400px, quality 0.7) so the
+          // factory grid and library load lightweight previews.
+          const thumbnail = await generateImageThumbnail(file);
+          let thumbnailPath: string | null = null;
+          if (thumbnail) {
+            const thumbStoragePath = `thumbnails/${pathBase}.jpg`;
+            const { error: thumbError } = await supabase.storage
+              .from('default-images')
+              .upload(thumbStoragePath, thumbnail.blob, { contentType: 'image/jpeg', upsert: true });
+            if (thumbError) throw thumbError;
+            thumbnailPath = thumbStoragePath;
+          }
+
           const insertedAsset = await insertDefaultImageRecord({
             name: file.name,
             storagePath,
+            thumbnailPath,
             width: img.width,
             height: img.height,
             fileSize: file.size,
@@ -637,7 +653,7 @@ export function ContentFactory() {
                 <div key={asset.id} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                   <div className="aspect-[4/3] bg-white">
                     <img
-                      src={getSupabaseStoragePublicUrl('default-images', asset.storage_path)}
+                      src={getSupabaseStoragePublicUrl('default-images', asset.thumbnail_path || asset.storage_path)}
                       alt={asset.name}
                       className="h-full w-full object-contain"
                       loading="lazy"

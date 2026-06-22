@@ -4,6 +4,7 @@ export interface DefaultImage {
   id: string;
   name: string;
   storage_path: string;
+  thumbnail_path?: string | null;
   width: number | null;
   height: number | null;
   file_size: number | null;
@@ -22,6 +23,7 @@ export interface UserImage {
   user_id: string;
   name: string;
   storage_path: string;
+  thumbnail_path?: string | null;
   width: number | null;
   height: number | null;
   file_size: number | null;

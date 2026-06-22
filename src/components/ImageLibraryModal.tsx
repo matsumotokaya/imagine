@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
 import type { DefaultImage, UserImage } from '../types/image-library';
 import { formatWorkVariantLabel, insertUserImageRecord } from '../utils/libraryAssets';
+import { generateImageThumbnail } from '../utils/imageThumbnail';
 
 interface ImageLibraryModalProps {
   isOpen: boolean;
@@ -178,14 +179,28 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
 
           const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}-${file.name}`;
 
+          // Generate a lightweight JPEG thumbnail (max 400px, quality 0.7) so
+          // the library grid loads thumbnails instead of full-size originals.
+          const thumbnail = await generateImageThumbnail(file);
+
           if (activeTab === 'default') {
             const filePath = fileName;
             const { error: uploadError } = await supabase.storage.from('default-images').upload(filePath, file);
             if (uploadError) throw uploadError;
 
+            let thumbnailPath: string | null = null;
+            if (thumbnail) {
+              thumbnailPath = `thumbnails/${fileName}.jpg`;
+              const { error: thumbError } = await supabase.storage
+                .from('default-images')
+                .upload(thumbnailPath, thumbnail.blob, { contentType: 'image/jpeg', upsert: true });
+              if (thumbError) throw thumbError;
+            }
+
             const { error: dbError } = await supabase.from('default_images').insert({
               name: file.name,
               storage_path: filePath,
+              thumbnail_path: thumbnailPath,
               width,
               height,
               file_size: file.size,
@@ -197,10 +212,21 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
             const { error: uploadError } = await supabase.storage.from('user-images').upload(filePath, file);
             if (uploadError) throw uploadError;
 
+            let thumbnailPath: string | null = null;
+            if (thumbnail) {
+              // user-images RLS requires the first path segment to be the UID.
+              thumbnailPath = `${user.id}/thumbnails/${fileName}.jpg`;
+              const { error: thumbError } = await supabase.storage
+                .from('user-images')
+                .upload(thumbnailPath, thumbnail.blob, { contentType: 'image/jpeg', upsert: true });
+              if (thumbError) throw thumbError;
+            }
+
             await insertUserImageRecord({
               userId: user.id,
               name: file.name,
               storagePath: filePath,
+              thumbnailPath,
               width,
               height,
               fileSize: file.size,
@@ -385,7 +411,7 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
                   className="group relative aspect-square rounded-md overflow-hidden border border-[#333] hover:border-indigo-500 transition-all bg-[#222]"
                 >
                   <img
-                    src={getCachedDisplayUrl(image.storage_path, bucketName)}
+                    src={getCachedDisplayUrl(image.thumbnail_path || image.storage_path, bucketName)}
                     alt={image.name}
                     className="w-full h-full object-contain"
                     loading="lazy"
@@ -396,11 +422,6 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
                       add_circle
                     </span>
                   </div>
-                  {!('asset_scope' in image) && image.work_series_slug && image.work_number && (
-                    <div className="absolute left-2 top-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-900">
-                      Premium
-                    </div>
-                  )}
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 text-white">
                     <div className="truncate text-[10px] font-medium">{image.name}</div>
                     {!('asset_scope' in image) && image.work_series_slug && image.work_number && (
