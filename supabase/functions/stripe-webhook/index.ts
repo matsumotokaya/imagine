@@ -56,6 +56,15 @@ serve(async (req) => {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
+
+        // Only subscription checkouts grant premium. One-time payments
+        // (mode === 'payment'), e.g. the whatif wallpaper purchases that share
+        // this Stripe account, must NOT upgrade the user to premium.
+        if (session.mode !== 'subscription') {
+          console.log(`Ignoring non-subscription checkout (mode=${session.mode}) ${session.id}`)
+          break
+        }
+
         const userId = session.client_reference_id || session.metadata?.user_id
 
         if (!userId) {
