@@ -49,7 +49,9 @@ export const BannerEditor = () => {
   const isGuest = !id;
   const guestStorageKey = GUEST_STORAGE_KEY;
   const locationState = location.state as BannerEditorLocationState | null;
-  const editorReturnTo = isGuest ? '/' : (locationState?.returnTo || '/mydesign');
+  // Guests also return to the design list (BannerManager renders their single
+  // localStorage design) so they can see their work was saved, instead of TOP.
+  const editorReturnTo = isGuest ? '/mydesign' : (locationState?.returnTo || '/mydesign');
 
   const [guestTemplate, setGuestTemplate] = useState<Template | null>(null);
   const [guestName, setGuestName] = useState<string>('');
