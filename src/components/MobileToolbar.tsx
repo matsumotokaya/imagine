@@ -6,6 +6,7 @@ import { ImageUploader } from './ImageUploader';
 import { ImageLibraryModal } from './ImageLibraryModal';
 import { UpgradeModal } from './UpgradeModal';
 import { ColorSelector } from './ColorSelector';
+import { MobileSheet } from './MobileSheet';
 import { useAuth } from '../contexts/AuthContext';
 import type { CanvasElement } from '../types/template';
 import { arrayMove } from '@dnd-kit/sortable';
@@ -99,15 +100,10 @@ export const MobileToolbar = ({
 
   return (
     <>
-      {/* Drawer panel - in flex flow, pushes canvas up when open */}
+      {/* Drawer panel - draggable bottom sheet overlay; drag down to dismiss */}
       {activeDrawer && (
-        <div className="bg-[#1a1a1a] border-t border-[#2b2b2b] max-h-[45vh] overflow-y-auto">
-          {/* Drag handle indicator */}
-          <div className="flex justify-center pt-2 pb-1">
-            <div className="w-8 h-1 bg-[#333333] rounded-full" />
-          </div>
-
-          <div className="px-4 pb-4">
+        <MobileSheet onDismiss={() => setActiveDrawer(null)}>
+          <div>
             {/* Tool Drawer */}
             {activeDrawer === 'tool' && (
               <div className="space-y-3">
@@ -245,7 +241,7 @@ export const MobileToolbar = ({
               </>
             )}
           </div>
-        </div>
+        </MobileSheet>
       )}
 
       {/* Tab bar - always visible, sits flush above BottomBar */}
