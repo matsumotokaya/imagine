@@ -23,7 +23,7 @@ export const GalleryTabs = () => {
           <button
             key={tab.path}
             onClick={() => navigate(tab.path)}
-            className={`px-4 py-2 rounded-full text-sm font-semibold transition-colors ${
+            className={`px-3 sm:px-4 py-2 rounded-full text-[0.7rem] sm:text-sm font-semibold whitespace-nowrap transition-colors ${
               isActive
                 ? 'bg-indigo-600 text-white'
                 : 'bg-[#2b2b2b] text-gray-300 hover:bg-[#333333]'
