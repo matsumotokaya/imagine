@@ -1610,7 +1610,7 @@ export const BannerEditor = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#1e1e1e]">
+    <div className="h-[100dvh] flex flex-col bg-[#1e1e1e]">
       <Header
         onBackToManager={handleBackToManager}
         bannerName={banner.name}

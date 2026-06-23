@@ -1,7 +1,91 @@
+import { useState, useRef, useEffect, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CanvasElement, TextElement, ShapeElement } from '../types/template';
 import { ColorSelector } from './ColorSelector';
 import { FontSelector } from './FontSelector';
+
+// iOS-style draggable bottom sheet with snap detents (mobile property panel).
+// Detents are fractions of the visible viewport height: peek / medium / large.
+const SHEET_DETENT_RATIOS = [0.34, 0.6, 0.9];
+
+const MobileSheet = ({ children }: { children: ReactNode }) => {
+  const getDetents = () => {
+    const vh = window.innerHeight;
+    return SHEET_DETENT_RATIOS.map((r) => Math.round(vh * r));
+  };
+
+  const detentsRef = useRef<number[]>(getDetents());
+  const [height, setHeight] = useState(() => detentsRef.current[0]);
+  const heightRef = useRef(height);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+
+  const applyHeight = (h: number) => {
+    heightRef.current = h;
+    setHeight(h);
+  };
+
+  // Keep detents in sync with viewport changes (rotation, URL bar show/hide).
+  useEffect(() => {
+    const onResize = () => {
+      detentsRef.current = getDetents();
+      const max = detentsRef.current[detentsRef.current.length - 1];
+      if (heightRef.current > max) applyHeight(max);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const handlePointerDown = (e: ReactPointerEvent) => {
+    dragRef.current = { startY: e.clientY, startH: heightRef.current };
+    setIsDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: ReactPointerEvent) => {
+    if (!dragRef.current) return;
+    const detents = detentsRef.current;
+    const min = Math.round(detents[0] * 0.55);
+    const max = detents[detents.length - 1];
+    const next = Math.min(max, Math.max(min, dragRef.current.startH - (e.clientY - dragRef.current.startY)));
+    applyHeight(next);
+  };
+
+  const handlePointerUp = (e: ReactPointerEvent) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    setIsDragging(false);
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    // Snap to the nearest detent on release.
+    const detents = detentsRef.current;
+    const nearest = detents.reduce(
+      (best, d) => (Math.abs(d - heightRef.current) < Math.abs(best - heightRef.current) ? d : best),
+      detents[0],
+    );
+    applyHeight(nearest);
+  };
+
+  return (
+    <div
+      className="fixed bottom-0 left-0 right-0 z-50 flex flex-col bg-[#1a1a1a]/90 backdrop-blur-md border-t border-[#2b2b2b] rounded-t-2xl shadow-2xl"
+      style={{ height, transition: isDragging ? 'none' : 'height 0.28s cubic-bezier(0.32, 0.72, 0, 1)' }}
+    >
+      {/* Drag handle - pull up/down to resize, snaps to detents */}
+      <div
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        className="flex justify-center items-center pt-2.5 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing select-none"
+      >
+        <div className="w-10 h-1.5 bg-gray-500 rounded-full" />
+      </div>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {children}
+      </div>
+    </div>
+  );
+};
 
 interface PropertyPanelProps {
   selectedElement: CanvasElement | null;
@@ -185,16 +269,7 @@ export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, on
       );
 
       if (isMobile) {
-        return (
-          <div className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a]/80 backdrop-blur-sm border-t border-[#2b2b2b] rounded-t-2xl shadow-2xl z-50 max-h-[20vh] overflow-y-auto overflow-x-hidden">
-            <div className="flex justify-center pt-1.5 pb-0.5">
-              <div className="w-10 h-1 bg-gray-600 rounded-full" />
-            </div>
-            <div className="px-4 pb-3">
-              {multiContent}
-            </div>
-          </div>
-        );
+        return <MobileSheet>{multiContent}</MobileSheet>;
       }
 
       return (
@@ -733,17 +808,7 @@ export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, on
   );
 
   if (isMobile) {
-    return (
-      <div className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a]/80 backdrop-blur-sm border-t border-[#2b2b2b] rounded-t-2xl shadow-2xl z-50 max-h-[20vh] overflow-y-auto overflow-x-hidden">
-        {/* Drag handle indicator */}
-        <div className="flex justify-center pt-1.5 pb-0.5">
-          <div className="w-10 h-1 bg-gray-600 rounded-full" />
-        </div>
-        <div className="px-4 pb-3">
-          {panelContent}
-        </div>
-      </div>
-    );
+    return <MobileSheet>{panelContent}</MobileSheet>;
   }
 
   return (
