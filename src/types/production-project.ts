@@ -12,6 +12,10 @@ export type ProductionOutputRole =
   | 'pc_qhd'
   | 'pc_hd'
   | 'instagram_feed'
+  // Lightweight credited feed thumbnail (~720px long edge, WebP) derived from
+  // the instagram_feed output. Consumed by the Gallery list grid served
+  // `unoptimized` to bypass Vercel Image Optimization.
+  | 'feed_thumb'
   | 'package_cover'
   | 'zip';
 

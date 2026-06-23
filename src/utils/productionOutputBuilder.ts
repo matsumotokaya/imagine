@@ -71,6 +71,17 @@ const COVER_OUTPUT = {
   fileName: 'package-cover.png',
 };
 
+// Lightweight credited feed thumbnail derived from the instagram_feed output.
+// Target ~720px on the long edge, WebP, credit preserved (it is already baked
+// into the instagram_feed pixels). Consumed by the Gallery list grid served
+// `unoptimized` so the full 1080x1350 PNG never hits Vercel Image Optimization.
+const FEED_THUMB = {
+  longEdge: 720,
+  mimeType: 'image/webp',
+  quality: 0.82,
+  fileName: 'feed-thumb.webp',
+};
+
 function loadImageFromUrl(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -91,6 +102,55 @@ function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
       resolve(blob);
     }, 'image/png');
   });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error(`Failed to export ${mimeType} blob.`));
+          return;
+        }
+        resolve(blob);
+      },
+      mimeType,
+      quality,
+    );
+  });
+}
+
+// Downscale an already-rendered credited feed blob into a lightweight thumbnail.
+// Aspect ratio is preserved (the feed is 4:5), so the long edge is clamped to
+// FEED_THUMB.longEdge and the short edge is scaled proportionally.
+async function renderFeedThumbBlob(feedBlob: Blob): Promise<{ blob: Blob; width: number; height: number }> {
+  const feedUrl = URL.createObjectURL(feedBlob);
+  try {
+    const image = await loadImageElement(feedUrl);
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    const longEdge = Math.max(sourceWidth, sourceHeight) || FEED_THUMB.longEdge;
+    const scale = Math.min(1, FEED_THUMB.longEdge / longEdge);
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Failed to get 2D canvas context for feed thumbnail.');
+    }
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.clearRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    const blob = await canvasToBlob(canvas, FEED_THUMB.mimeType, FEED_THUMB.quality);
+    return { blob, width, height };
+  } finally {
+    URL.revokeObjectURL(feedUrl);
+  }
 }
 
 async function renderOutputBlob(sourceUrl: string, width: number, height: number): Promise<Blob> {
@@ -201,6 +261,7 @@ async function saveCurrentOutput(params: {
   height: number;
   blob: Blob;
   fileName: string;
+  mimeType?: string;
 }): Promise<{ id: string }> {
   const supabase = await getSupabase();
   const { data: currentOutputs, error: currentOutputsError } = await supabase
@@ -221,12 +282,13 @@ async function saveCurrentOutput(params: {
   //   - UPDATE: for re-publishing (overwriting) an already-published project
   // If the UPDATE policy is missing, re-publish fails with a row-level security
   // violation even though the first publish succeeded. Keep both policies in sync.
+  const mimeType = params.mimeType ?? 'image/png';
   const filePath = `${params.userId}/production/${params.projectId}/${params.fileName}`;
   const publicUrl = await uploadBlobToBucket(
     OUTPUT_BUCKET,
     filePath,
     params.blob,
-    'image/png',
+    mimeType,
     { upsert: true },
   );
 
@@ -250,7 +312,7 @@ async function saveCurrentOutput(params: {
       storage_provider: 'supabase',
       storage_bucket: OUTPUT_BUCKET,
       storage_path: filePath,
-      mime_type: 'image/png',
+      mime_type: mimeType,
       file_size_bytes: params.blob.size,
       width: params.width,
       height: params.height,
@@ -322,6 +384,34 @@ export async function buildProductionOutputs(project: ProductionProjectSummary):
       }
 
       outputCount += 1;
+
+      // Derive a lightweight credited feed thumbnail from the just-rendered
+      // instagram_feed PNG. The credit is already baked into those pixels, so a
+      // proportional downscale preserves it. Served `unoptimized` by the Gallery.
+      //
+      // This is a non-essential optimization output: wrap it in its own
+      // try/catch so a thumbnail failure is logged and swallowed without rolling
+      // back the publish. Older works simply fall back to the full feed image in
+      // the Gallery, and a feed_thumb can be backfilled later.
+      if (spec.role === 'instagram_feed') {
+        try {
+          const thumb = await renderFeedThumbBlob(blob);
+          await saveCurrentOutput({
+            userId,
+            projectId: project.project.id,
+            sourceBannerId: sourceBanner.bannerId,
+            role: 'feed_thumb',
+            width: thumb.width,
+            height: thumb.height,
+            blob: thumb.blob,
+            fileName: FEED_THUMB.fileName,
+            mimeType: FEED_THUMB.mimeType,
+          });
+          outputCount += 1;
+        } catch (thumbError) {
+          console.error('Failed to generate feed_thumb (non-fatal, publish continues):', thumbError);
+        }
+      }
     }
 
     // Generate the package cover headlessly from the HD wallpaper.
