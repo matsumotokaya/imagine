@@ -20,8 +20,8 @@ export const BottomBar = ({
 }: BottomBarProps) => {
   const { t } = useTranslation(['editor', 'common']);
   return (
-    <div className="h-14 md:h-16 bg-[#1a1a1a] border-t border-[#2b2b2b] overflow-x-auto overflow-y-hidden">
-      <div className="flex items-center justify-between px-3 md:px-6 h-full min-w-max">
+    <div className="bg-[#1a1a1a] border-t border-[#2b2b2b] overflow-x-auto overflow-y-hidden pb-[env(safe-area-inset-bottom)]">
+      <div className="flex items-center justify-between px-3 md:px-6 h-14 md:h-16 min-w-max">
         {/* Zoom controls */}
         <div className="flex items-center gap-2 md:gap-4">
           <div className="flex items-center gap-1.5 md:gap-3">
