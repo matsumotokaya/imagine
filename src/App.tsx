@@ -22,6 +22,7 @@ const UpgradePage = lazy(() => import('./pages/UpgradePage').then((module) => ({
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then((module) => ({ default: module.AdminDashboard })));
 const ContentFactory = lazy(() => import('./pages/ContentFactory').then((module) => ({ default: module.ContentFactory })));
 const CoverLab = lazy(() => import('./pages/CoverLab').then((module) => ({ default: module.CoverLab })));
+const StorageCleanup = lazy(() => import('./pages/StorageCleanup').then((module) => ({ default: module.StorageCleanup })));
 const Tokushoho = lazy(() => import('./pages/legal/Tokushoho').then((module) => ({ default: module.Tokushoho })));
 const PrivacyPolicy = lazy(() => import('./pages/legal/PrivacyPolicy').then((module) => ({ default: module.PrivacyPolicy })));
 const TermsOfService = lazy(() => import('./pages/legal/TermsOfService').then((module) => ({ default: module.TermsOfService })));
@@ -74,6 +75,7 @@ function App() {
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/admin/content-factory" element={<ContentFactory />} />
               <Route path="/admin/cover-lab" element={<CoverLab />} />
+              <Route path="/admin/storage-cleanup" element={<StorageCleanup />} />
             </Routes>
           </Suspense>
           <CookieConsent />

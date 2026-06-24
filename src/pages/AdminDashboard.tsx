@@ -333,6 +333,15 @@ export function AdminDashboard() {
                     パッケージカバーのレイアウト調整プレビュー。
                   </p>
                 </Link>
+                <Link
+                  to="/admin/storage-cleanup"
+                  className="rounded-xl border border-gray-200 bg-gray-50 p-4 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="text-sm font-semibold text-gray-900">Storage Cleanup</div>
+                  <p className="mt-2 text-sm text-gray-500 text-pretty">
+                    fullres キャッシュ・孤立ファイルを安全にパージして容量を削減する。
+                  </p>
+                </Link>
               </div>
             </Card>
           </>
