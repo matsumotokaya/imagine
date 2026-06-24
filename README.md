@@ -180,6 +180,7 @@ See [docs/DATABASE.md](docs/DATABASE.md) for full schema details.
 - [Performance Guide](docs/PERFORMANCE.md) - React Query cache settings, optimization history
 - [Database Schema](docs/DATABASE.md) - Full table definitions and RLS policies
 - [SSO Dev Testing](docs/sso-dev.md) - Local testing of cross-subdomain session sharing with the Gallery
+- [R2 Migration Design](docs/R2_MIGRATION.md) - Cloudflare R2 への画像ストレージ移行設計（未実装・次セッション向け）
 
 ## Renewal Note
 
