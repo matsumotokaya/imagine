@@ -21,6 +21,13 @@ type ImageWithUrl = DefaultImageWithUrl | UserImageWithUrl;
 
 const PAGE_SIZE = 16;
 
+function formatFileSize(bytes: number | null | undefined): string {
+  if (!bytes || bytes <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+
 export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab = 'user' }: ImageLibraryModalProps) => {
   const { t } = useTranslation(['modal', 'message']);
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
@@ -31,6 +38,8 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
   const [isAdmin, setIsAdmin] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const urlCacheRef = useRef<Map<string, string>>(new Map());
 
@@ -121,7 +130,7 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
     };
 
     fetchImages();
-  }, [isOpen, activeTab, currentPage]);
+  }, [isOpen, activeTab, currentPage, refreshKey]);
 
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
@@ -289,6 +298,40 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
     onClose();
   };
 
+  // Admin-only manual deletion of a premium-library (default_images) asset.
+  const handleDeleteDefaultImage = async (image: DefaultImageWithUrl, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm(t('modal:imageLibrary.deleteConfirm', { name: image.name }))) return;
+
+    setDeletingId(image.id);
+    try {
+      const supabase = await getSupabase();
+
+      // Remove the original + thumbnail objects from the bucket first.
+      const paths = [image.storage_path, image.thumbnail_path].filter(Boolean) as string[];
+      if (paths.length > 0) {
+        const { error: storageError } = await supabase.storage.from('default-images').remove(paths);
+        if (storageError) throw storageError;
+      }
+
+      // Then remove the metadata row.
+      const { error: dbError } = await supabase.from('default_images').delete().eq('id', image.id);
+      if (dbError) throw dbError;
+
+      // Step back a page if we just emptied a non-first page; otherwise refetch the same page.
+      if (defaultImages.length === 1 && currentPage > 0) {
+        setCurrentPage((p) => p - 1);
+      } else {
+        setRefreshKey((k) => k + 1);
+      }
+    } catch (error) {
+      console.error('Failed to delete default image:', error);
+      alert(t('modal:imageLibrary.deleteFailed'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   const images = activeTab === 'default' ? defaultImages : userImages;
@@ -404,34 +447,63 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
             </div>
           ) : (
             <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-              {(images as ImageWithUrl[]).map((image) => (
-                <button
-                  key={image.id}
-                  onClick={() => handleSelect(image as DefaultImageWithUrl & UserImageWithUrl)}
-                  className="group relative aspect-square rounded-md overflow-hidden border border-[#333] hover:border-indigo-500 transition-all bg-[#222]"
-                >
-                  <img
-                    src={getCachedDisplayUrl(image.thumbnail_path || image.storage_path, bucketName)}
-                    alt={image.name}
-                    className="w-full h-full object-contain"
-                    loading="lazy"
-                    decoding="async"
-                  />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
-                    <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 text-3xl drop-shadow-lg">
-                      add_circle
-                    </span>
-                  </div>
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 text-white">
-                    <div className="truncate text-[10px] font-medium">{image.name}</div>
-                    {!('asset_scope' in image) && image.work_series_slug && image.work_number && (
-                      <div className="truncate text-[9px] text-gray-300">
-                        {formatWorkVariantLabel(image)}
+              {(images as ImageWithUrl[]).map((image) => {
+                const isDefaultTab = activeTab === 'default';
+                const canDelete = isAdmin && isDefaultTab;
+                const dims = image.width && image.height ? `${image.width}×${image.height}` : '';
+                const size = formatFileSize(image.file_size);
+                const meta = [dims, size].filter(Boolean).join(' · ');
+                return (
+                  <div
+                    key={image.id}
+                    className="group relative aspect-square rounded-md overflow-hidden border border-[#333] hover:border-indigo-500 transition-all bg-[#222]"
+                  >
+                    <button
+                      onClick={() => handleSelect(image as DefaultImageWithUrl & UserImageWithUrl)}
+                      className="absolute inset-0 w-full h-full"
+                      title={image.name}
+                    >
+                      <img
+                        src={getCachedDisplayUrl(image.thumbnail_path || image.storage_path, bucketName)}
+                        alt={image.name}
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all flex items-center justify-center">
+                        <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 text-3xl drop-shadow-lg">
+                          add_circle
+                        </span>
                       </div>
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 text-white text-left">
+                        <div className="truncate text-[10px] font-medium">{image.name}</div>
+                        {isDefaultTab && meta && (
+                          <div className="truncate text-[9px] text-gray-400">{meta}</div>
+                        )}
+                        {!('asset_scope' in image) && image.work_series_slug && image.work_number && (
+                          <div className="truncate text-[9px] text-gray-300">
+                            {formatWorkVariantLabel(image)}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+
+                    {canDelete && (
+                      <button
+                        onClick={(e) => handleDeleteDefaultImage(image as DefaultImageWithUrl, e)}
+                        disabled={deletingId === image.id}
+                        className="absolute top-1 right-1 z-10 p-1 rounded-md bg-black/60 text-red-300 hover:bg-red-600 hover:text-white transition-colors disabled:opacity-50"
+                        title={t('modal:imageLibrary.deleteConfirm', { name: image.name })}
+                        aria-label="Delete"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">
+                          {deletingId === image.id ? 'hourglass_empty' : 'delete'}
+                        </span>
+                      </button>
                     )}
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
