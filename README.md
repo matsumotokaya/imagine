@@ -63,6 +63,8 @@ npm run build
 - **Admin Dashboard** (`/admin`): Storage usage monitoring, user/content stats, Supabase Free plan limits
 - **Content Factory** (`/admin/content-factory`): Admin-only workflow board for official work production, wallpaper output planning, and Gallery publish sequencing
   - Project creation auto-generates 3 editable drafts (Portrait / Landscape / Feed). The Cover is **not** an editable draft — it is composed headlessly from the HD wallpaper at Publish time
+  - `Work Metadata` is the canonical Gallery metadata for the work itself: `Work Title`, `Release Date`, `Work Tags`, `Summary`
+  - `Asset Tags` / `Asset Notes` belong to premium library assets (`default_images`) and are **not** the same as Gallery work metadata
   - **Publish** builds 5 PNG exports (mobile QHD/HD, PC QHD/HD, Instagram feed) + auto-composes the 1600×1600 `package_cover`, saved to `user-images/{userId}/production/{projectId}/`
   - **Cover Lab** (`/admin/cover-lab`): admin preview for tuning the package cover layout (`coverComposer.ts`)
 - **Template Management**: Add, edit, delete, and reorder templates in the gallery
@@ -96,6 +98,10 @@ non-credit / resize edits.
   Gallery's `work_offers` with `target_url = https://app.whatif-ep.xyz/banner?template=<id>`.
   The Gallery's "イラストを編集" (Edit in IMAGINE) button then lights up automatically — no
   Gallery code change needed per work.
+- **Canonical work sync**: Content Factory also upserts the Gallery's canonical
+  `works` / `work_variants` rows, stores `production_projects.work_id` / `variant_id`,
+  and republishes `Work Tags` / `Summary` / `Release Date` from the project metadata so
+  the Gallery detail sidebar and admin edit screen stay aligned.
 - **Direct open** (`/banner?template=<id>`): opens that template through the shared
   `useOpenTemplate` flow (same premium guard as the template gallery). Not logged in →
   redirected to login and returned to the URL; logged-in free → upgrade modal; premium → edit.

@@ -154,6 +154,10 @@ CREATE TABLE user_images (
 ### `production_projects`
 Variant-level production packages for Content Factory.
 
+- `work_id` / `variant_id`: canonical Gallery work linkage
+- `work_title` / `work_summary` / `released_on` / `work_tags`: project-level canonical metadata republished to Gallery on Publish / Republish
+- `notes`: internal production notes for the project itself, distinct from canonical work metadata
+
 ```sql
 CREATE TABLE production_projects (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -162,6 +166,12 @@ CREATE TABLE production_projects (
   work_number integer NOT NULL,
   work_display_code text NOT NULL,
   variant_number integer NOT NULL,
+  work_id uuid REFERENCES works(id) ON DELETE SET NULL,
+  variant_id uuid REFERENCES work_variants(id) ON DELETE SET NULL,
+  work_title text,
+  work_summary text,
+  released_on date,
+  work_tags text[],
   status text NOT NULL DEFAULT 'draft',
   title text,
   notes text,

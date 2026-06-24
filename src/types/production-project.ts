@@ -33,6 +33,12 @@ export interface ProductionProject {
   work_number: number;
   work_display_code: string;
   variant_number: number;
+  work_id: string | null;
+  variant_id: string | null;
+  work_title: string | null;
+  work_summary: string | null;
+  released_on: string | null;
+  work_tags: string[] | null;
   status: ProductionProjectStatus;
   title: string | null;
   notes: string | null;
@@ -66,6 +72,13 @@ export interface ProductionBannerSummary {
 
 export interface ProductionProjectSummary {
   project: ProductionProject;
+  canonicalWork: {
+    id: string;
+    title: string;
+    summary: string | null;
+    releasedOn: string | null;
+    tags: string[];
+  } | null;
   sourceAsset: {
     id: string;
     name: string;

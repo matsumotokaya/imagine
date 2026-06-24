@@ -16,6 +16,7 @@ import {
   WORK_SERIES_OPTIONS,
   type WorkSeriesSlug,
 } from '../utils/libraryAssets';
+import { ensureCanonicalWorkVariant } from '../utils/canonicalWorks';
 import type { DefaultImage } from '../types/image-library';
 import type { ProductionProjectSummary } from '../types/production-project';
 import { invalidateBannerCollectionQueries } from '../hooks/useBanners';
@@ -164,8 +165,12 @@ export function ContentFactory() {
   const [seriesSlug, setSeriesSlug] = useState<WorkSeriesSlug>('episode');
   const [workNumber, setWorkNumber] = useState('1');
   const [variantNumber, setVariantNumber] = useState('1');
+  const [workTitle, setWorkTitle] = useState('');
+  const [releasedOn, setReleasedOn] = useState('');
+  const [workSummary, setWorkSummary] = useState('');
+  const [workTagInput, setWorkTagInput] = useState('');
   const [assetRole, setAssetRole] = useState<(typeof OFFICIAL_ASSET_ROLE_OPTIONS)[number]['value']>('character_cutout');
-  const [tagInput, setTagInput] = useState('');
+  const [assetTagInput, setAssetTagInput] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -293,9 +298,20 @@ export function ContentFactory() {
 
     try {
       const supabase = await getSupabase();
-      const tags = parseTagInput(tagInput);
+      const workTags = parseTagInput(workTagInput);
+      const assetTags = parseTagInput(assetTagInput);
       const workCode = formatWorkDisplayCode(parsedWorkNumber);
       const variantCode = `${workCode}-${parsedVariantNumber}`;
+
+      await ensureCanonicalWorkVariant({
+        workSeriesSlug: seriesSlug,
+        workNumber: parsedWorkNumber,
+        variantNumber: parsedVariantNumber,
+        workTitle,
+        workSummary,
+        releasedOn,
+        workTags: workTags.length > 0 ? workTags : undefined,
+      });
 
       for (const file of selectedFiles) {
         try {
@@ -341,7 +357,7 @@ export function ContentFactory() {
             workNumber: parsedWorkNumber,
             variantNumber: parsedVariantNumber,
             assetRole,
-            tags,
+            tags: assetTags,
             notes: notes.trim() || null,
           });
 
@@ -373,6 +389,10 @@ export function ContentFactory() {
         try {
           const result = await ensureProductionProjectFromAsset(primaryAsset, user.id, {
             overwriteExisting: willOverwrite,
+            workTitle,
+            workSummary,
+            releasedOn,
+            workTags,
           });
           await invalidateBannerCollectionQueries(queryClient);
           await invalidateProductionProjectQueries(queryClient);
@@ -396,7 +416,7 @@ export function ContentFactory() {
         failCount === 0
           ? `Uploaded ${successCount} official asset(s) for ${label}.`
           : `Uploaded ${successCount} asset(s) (${failCount} failed) for ${label}.`;
-      setStatusMessage(`${uploadNote}${projectNote} You can now return to the Content Factory list.`);
+      setStatusMessage(`${uploadNote} Canonical work metadata is saved in works/work_variants.${projectNote} You can now return to the Content Factory list.`);
     } catch (error) {
       console.error('Failed to upload official assets:', error);
       setStatusError(error instanceof Error ? error.message : 'Upload failed.');
@@ -426,6 +446,12 @@ export function ContentFactory() {
     setStatusMessage(null);
 
     try {
+      await ensureCanonicalWorkVariant({
+        workSeriesSlug: asset.work_series_slug ?? 'episode',
+        workNumber: asset.work_number ?? 0,
+        variantNumber: asset.variant_number ?? 1,
+      });
+
       const result = await ensureProductionProjectFromAsset(asset, user.id, {
         overwriteExisting: Boolean(existingProject),
       });
@@ -548,13 +574,67 @@ export function ContentFactory() {
             </label>
           </div>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-gray-700">Tags</span>
+          <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4">
+            <div className="text-sm font-semibold text-gray-900">Work Metadata</div>
+            <p className="mt-1 text-xs text-gray-500 text-pretty">
+              Gallery の canonical な `works / work_variants` に保存される情報です。Content Factory が正本になります。
+            </p>
+
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <label className="block lg:col-span-2">
+                <span className="mb-2 block text-sm font-medium text-gray-700">Work Title</span>
+                <input
+                  type="text"
+                  value={workTitle}
+                  onChange={(event) => setWorkTitle(event.target.value)}
+                  placeholder="EPISODE 0465"
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-gray-700">Release Date</span>
+                <input
+                  type="date"
+                  value={releasedOn}
+                  onChange={(event) => setReleasedOn(event.target.value)}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                />
+              </label>
+
+              <div className="hidden lg:block" />
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-gray-700">Work Tags</span>
               <input
                 type="text"
-                value={tagInput}
-                onChange={(event) => setTagInput(event.target.value)}
+                value={workTagInput}
+                onChange={(event) => setWorkTagInput(event.target.value)}
+                placeholder="nature, portrait, cyberpunk"
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+              />
+            </label>
+
+            <label className="mt-4 block">
+              <span className="mb-2 block text-sm font-medium text-gray-700">Summary</span>
+              <textarea
+                value={workSummary}
+                onChange={(event) => setWorkSummary(event.target.value)}
+                rows={3}
+                placeholder="Short gallery description for this work."
+                className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-gray-700">Asset Tags</span>
+              <input
+                type="text"
+                value={assetTagInput}
+                onChange={(event) => setAssetTagInput(event.target.value)}
                 placeholder="character, main, pink"
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
               />
@@ -573,7 +653,7 @@ export function ContentFactory() {
           </div>
 
           <label className="mt-4 block">
-            <span className="mb-2 block text-sm font-medium text-gray-700">Notes</span>
+            <span className="mb-2 block text-sm font-medium text-gray-700">Asset Notes</span>
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
@@ -586,7 +666,7 @@ export function ContentFactory() {
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-gray-500 text-pretty">
               Target: <span className="font-medium text-gray-700">{formatSeriesLabel(seriesSlug)} {formatWorkDisplayCode(Number(workNumber) || 0)}-{variantNumber || '1'}</span>
-              <span className="ml-2">Stored in `default_images` and a variant project is created automatically.</span>
+              <span className="ml-2">Canonical work data is stored in `works/work_variants`. Assets stay in `default_images`, and a linked production project is created automatically.</span>
             </div>
             <button
               type="button"
@@ -622,7 +702,7 @@ export function ContentFactory() {
             <div>
               <h2 className="text-xl font-semibold text-gray-900 text-balance">Recent Official Assets</h2>
               <p className="mt-1 text-sm text-gray-500 text-pretty">
-                Content Factory から登録した画像を起点に、variant 単位の production project と 4 種の draft banner を作る。
+                Premium library assets. 作品本体ではなく、production project が参照する素材です。
               </p>
             </div>
             <Link
@@ -756,7 +836,7 @@ export function ContentFactory() {
                 <div className="rounded-xl bg-gray-50 p-4">
                   <div className="font-semibold text-gray-900">2. Official assets live in the same library table</div>
                   <p className="mt-2 text-pretty">
-                    公式素材は premium ライブラリそのものとして `default_images` に登録し、そこから直接会員が利用できる状態にする。
+                    `default_images` は premium ライブラリの素材台帳であり、作品 metadata の正本ではない。作品本体は `works/work_variants` に置く。
                   </p>
                 </div>
                 <div className="rounded-xl bg-gray-50 p-4">

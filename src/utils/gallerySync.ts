@@ -125,12 +125,18 @@ export async function syncGalleryWorkFromProductionProject(
     feedOutput.storage_path,
   );
 
-  const { data: existingWorkData, error: existingWorkError } = await supabase
+  const existingWorkQuery = supabase
     .from('works')
-    .select('id, title, theme_category, summary, released_on, legacy_episode_id, is_featured')
-    .eq('series_id', series.id)
-    .eq('display_code', displayCode)
-    .maybeSingle();
+    .select('id, title, theme_category, summary, released_on, legacy_episode_id, is_featured');
+
+  const { data: existingWorkData, error: existingWorkError } = project.project.work_id
+    ? await existingWorkQuery
+        .eq('id', project.project.work_id)
+        .maybeSingle()
+    : await existingWorkQuery
+        .eq('series_id', series.id)
+        .eq('display_code', displayCode)
+        .maybeSingle();
 
   if (existingWorkError) {
     throw existingWorkError;
@@ -181,12 +187,18 @@ export async function syncGalleryWorkFromProductionProject(
     throw new Error('Failed to resolve gallery work id.');
   }
 
-  const { data: existingVariantData, error: existingVariantError } = await supabase
+  const existingVariantQuery = supabase
     .from('work_variants')
-    .select('id, title, caption')
-    .eq('work_id', workId)
-    .eq('variant_number', variantNumber)
-    .maybeSingle();
+    .select('id, title, caption');
+
+  const { data: existingVariantData, error: existingVariantError } = project.project.variant_id
+    ? await existingVariantQuery
+        .eq('id', project.project.variant_id)
+        .maybeSingle()
+    : await existingVariantQuery
+        .eq('work_id', workId)
+        .eq('variant_number', variantNumber)
+        .maybeSingle();
 
   if (existingVariantError) {
     throw existingVariantError;
@@ -248,6 +260,20 @@ export async function syncGalleryWorkFromProductionProject(
 
   if (!variantId) {
     throw new Error('Failed to resolve gallery variant id.');
+  }
+
+  if (project.project.work_id !== workId || project.project.variant_id !== variantId) {
+    const { error: relinkError } = await supabase
+      .from('production_projects')
+      .update({
+        work_id: workId,
+        variant_id: variantId,
+      })
+      .eq('id', project.project.id);
+
+    if (relinkError) {
+      throw relinkError;
+    }
   }
 
   const wallpaperOfferPayload = {

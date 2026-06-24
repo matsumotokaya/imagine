@@ -7,7 +7,9 @@ import {
   loadImageElement,
   renderCover,
 } from './coverComposer';
+import { ensureCanonicalWorkVariant } from './canonicalWorks';
 import { syncGalleryWorkFromProductionProject, upsertImagineStarterOffer } from './gallerySync';
+import type { WorkSeriesSlug } from './libraryAssets';
 import { templateStorage } from './templateStorage';
 import type {
   ProductionOutputRole,
@@ -453,6 +455,15 @@ export async function buildProductionOutputs(project: ProductionProjectSummary):
 
 export async function publishProductionProject(project: ProductionProjectSummary): Promise<void> {
   const publishedAt = new Date().toISOString();
+  await ensureCanonicalWorkVariant({
+    workSeriesSlug: project.project.work_series_slug as WorkSeriesSlug,
+    workNumber: project.project.work_number,
+    variantNumber: project.project.variant_number,
+    workTitle: project.project.work_title ?? undefined,
+    workSummary: project.project.work_summary ?? undefined,
+    releasedOn: project.project.released_on ?? undefined,
+    workTags: project.project.work_tags ?? undefined,
+  });
   const { workId, variantId } = await syncGalleryWorkFromProductionProject(project);
 
   // Promote the editable drafts into public templates:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -14,7 +14,8 @@ import {
   buildProductionOutputs,
   publishProductionProject,
 } from '../utils/productionOutputBuilder';
-import { deleteProductionProject } from '../utils/productionProjects';
+import { parseTagInput } from '../utils/libraryAssets';
+import { deleteProductionProject, updateProductionProjectWorkMetadata } from '../utils/productionProjects';
 import type { ProductionProjectBannerRole, ProductionProjectSummary, ProductionProjectStatus } from '../types/production-project';
 
 const PROJECT_LIMIT = 60;
@@ -136,6 +137,100 @@ type FactoryBannerCardProps = {
   openLabel: string;
 };
 
+type ProjectMetadataEditorProps = {
+  entry: ProductionProjectSummary;
+  disabled: boolean;
+  onSave: (params: {
+    projectId: string;
+    workTitle: string;
+    workSummary: string;
+    releasedOn: string;
+    workTags: string[];
+  }) => Promise<void>;
+};
+
+function ProjectMetadataEditor({ entry, disabled, onSave }: ProjectMetadataEditorProps) {
+  const [workTitle, setWorkTitle] = useState(entry.project.work_title ?? entry.canonicalWork?.title ?? '');
+  const [releasedOn, setReleasedOn] = useState(entry.project.released_on ?? entry.canonicalWork?.releasedOn ?? '');
+  const [workSummary, setWorkSummary] = useState(entry.project.work_summary ?? entry.canonicalWork?.summary ?? '');
+  const [workTagInput, setWorkTagInput] = useState((entry.project.work_tags ?? entry.canonicalWork?.tags ?? []).join(', '));
+
+  return (
+    <div className="mt-4 rounded-xl border border-gray-800 bg-[#111111] p-4">
+      <div className="text-sm font-semibold text-gray-100">Work Metadata</div>
+      <p className="mt-1 text-xs text-gray-500">
+        Publish writes these values into the canonical Gallery work.
+      </p>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <label className="block lg:col-span-2">
+          <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">Work Title</span>
+          <input
+            type="text"
+            value={workTitle}
+            onChange={(event) => setWorkTitle(event.target.value)}
+            disabled={disabled}
+            className="w-full rounded-lg border border-gray-700 bg-[#171717] px-3 py-2 text-sm text-gray-100 disabled:opacity-60"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">Release Date</span>
+          <input
+            type="date"
+            value={releasedOn}
+            onChange={(event) => setReleasedOn(event.target.value)}
+            disabled={disabled}
+            className="w-full rounded-lg border border-gray-700 bg-[#171717] px-3 py-2 text-sm text-gray-100 disabled:opacity-60"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">Work Tags</span>
+          <input
+            type="text"
+            value={workTagInput}
+            onChange={(event) => setWorkTagInput(event.target.value)}
+            disabled={disabled}
+            placeholder="nature, portrait, cyberpunk"
+            className="w-full rounded-lg border border-gray-700 bg-[#171717] px-3 py-2 text-sm text-gray-100 disabled:opacity-60"
+          />
+        </label>
+      </div>
+
+      <label className="mt-3 block">
+        <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-gray-400">Summary</span>
+        <textarea
+          value={workSummary}
+          onChange={(event) => setWorkSummary(event.target.value)}
+          disabled={disabled}
+          rows={3}
+          className="w-full rounded-lg border border-gray-700 bg-[#171717] px-3 py-2 text-sm text-gray-100 disabled:opacity-60"
+        />
+      </label>
+
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={() =>
+            void onSave({
+              projectId: entry.project.id,
+              workTitle,
+              workSummary,
+              releasedOn,
+              workTags: parseTagInput(workTagInput),
+            })
+          }
+          disabled={disabled}
+          className="rounded-lg border border-gray-700 bg-[#171717] px-3 py-2 text-sm font-medium text-gray-100 transition-colors hover:border-indigo-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Save Metadata
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function FactoryBannerCard({
   banner,
   title,
@@ -147,10 +242,6 @@ function FactoryBannerCard({
   openLabel,
 }: FactoryBannerCardProps) {
   const [imageFailed, setImageFailed] = useState(false);
-
-  useEffect(() => {
-    setImageFailed(false);
-  }, [banner.bannerId, banner.thumbnailUrl, banner.fullresUrl]);
 
   const previewUrl = imageFailed ? null : banner.thumbnailUrl ?? banner.fullresUrl ?? null;
 
@@ -195,7 +286,7 @@ export function FactoryProjectManager() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user, profile, loading } = useAuth();
-  const [pendingByProject, setPendingByProject] = useState<Record<string, 'publish' | 'delete' | undefined>>({});
+  const [pendingByProject, setPendingByProject] = useState<Record<string, 'publish' | 'delete' | 'save' | undefined>>({});
   const [messageByProject, setMessageByProject] = useState<Record<string, string | undefined>>({});
   const [errorByProject, setErrorByProject] = useState<Record<string, string | undefined>>({});
   const {
@@ -278,6 +369,34 @@ export function FactoryProjectManager() {
       }));
     } finally {
       setPendingByProject((prev) => ({ ...prev, [entry.project.id]: undefined }));
+    }
+  };
+
+  const handleSaveMetadata = async (params: {
+    projectId: string;
+    workTitle: string;
+    workSummary: string;
+    releasedOn: string;
+    workTags: string[];
+  }) => {
+    setPendingByProject((prev) => ({ ...prev, [params.projectId]: 'save' }));
+    setErrorByProject((prev) => ({ ...prev, [params.projectId]: undefined }));
+    setMessageByProject((prev) => ({ ...prev, [params.projectId]: undefined }));
+
+    try {
+      await updateProductionProjectWorkMetadata(params);
+      await invalidateProductionProjectQueries(queryClient);
+      setMessageByProject((prev) => ({
+        ...prev,
+        [params.projectId]: 'Saved work metadata. Republish to reflect it in the Gallery.',
+      }));
+    } catch (error) {
+      setErrorByProject((prev) => ({
+        ...prev,
+        [params.projectId]: error instanceof Error ? error.message : 'Failed to save work metadata.',
+      }));
+    } finally {
+      setPendingByProject((prev) => ({ ...prev, [params.projectId]: undefined }));
     }
   };
 
@@ -499,6 +618,13 @@ export function FactoryProjectManager() {
                     </div>
                   )}
 
+                  <ProjectMetadataEditor
+                    key={`${entry.project.id}:${entry.project.updated_at}`}
+                    entry={entry}
+                    disabled={isPending}
+                    onSave={handleSaveMetadata}
+                  />
+
                   <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                     {ROLE_ORDER.map((role) => {
                       const banner = bannersByRole.get(role);
@@ -527,7 +653,7 @@ export function FactoryProjectManager() {
 
                       return (
                         <FactoryBannerCard
-                          key={role}
+                          key={`${role}:${banner.bannerId}:${banner.thumbnailUrl ?? ''}:${banner.fullresUrl ?? ''}`}
                           banner={banner}
                           title={title}
                           label={meta.label}

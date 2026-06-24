@@ -9,6 +9,7 @@ import type {
   ProductionProjectSummary,
 } from '../types/production-project';
 import { formatSeriesLabel, formatWorkDisplayCode } from './libraryAssets';
+import { ensureCanonicalWorkVariant } from './canonicalWorks';
 import { getFitToCanvasPlacement } from './canvasPlacement';
 import { appendCacheBust, extractStoragePathFromPublicUrl, removeFilesFromBucket } from './storage';
 
@@ -75,6 +76,18 @@ type DbAssetLink = {
   role: string;
   sort_order: number;
   is_primary: boolean;
+};
+
+type DbCanonicalWorkRow = {
+  id: string;
+  title: string;
+  summary: string | null;
+  released_on: string | null;
+};
+
+type DbWorkTagRow = {
+  id: string;
+  label: string;
 };
 
 const ROLE_LABELS: Record<Exclude<ProductionProjectBannerRole, 'imagine_template'>, string> = {
@@ -180,6 +193,10 @@ function buildBannerName(asset: DefaultImage, role: DraftBannerSpec['role']): st
   return `${buildProjectTitle(asset)} ${ROLE_LABELS[role]}`;
 }
 
+function normalizeProjectText(value: string | null | undefined): string | null {
+  return value?.trim() ? value.trim() : null;
+}
+
 async function loadProjectSummariesByIds(projectIds: string[]): Promise<ProductionProjectSummary[]> {
   if (projectIds.length === 0) {
     return [];
@@ -219,6 +236,13 @@ async function loadProjectSummariesByIds(projectIds: string[]): Promise<Producti
 
   const bannerIds = Array.from(new Set((projectBanners ?? []).map((row) => row.banner_id)));
   const assetIds = Array.from(new Set((projectAssets ?? []).map((row) => row.default_image_id)));
+  const workIds = Array.from(
+    new Set(
+      ((projects ?? []) as ProductionProject[])
+        .map((project) => project.work_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
 
   const bannerMap = new Map<string, ProductionBannerSummary>();
   if (bannerIds.length > 0) {
@@ -288,8 +312,66 @@ async function loadProjectSummariesByIds(projectIds: string[]): Promise<Producti
     primaryAssetsByProject.set(link.project_id, asset ?? null);
   }
 
+  const canonicalWorkById = new Map<string, ProductionProjectSummary['canonicalWork']>();
+  if (workIds.length > 0) {
+    const { data: works, error: worksError } = await supabase
+      .from('works')
+      .select('id, title, summary, released_on')
+      .in('id', workIds);
+
+    if (worksError) {
+      throw worksError;
+    }
+
+    const { data: tagMapRows, error: tagMapError } = await supabase
+      .from('work_tag_map')
+      .select('work_id, tag_id')
+      .in('work_id', workIds);
+
+    if (tagMapError) {
+      throw tagMapError;
+    }
+
+    const tagIds = Array.from(new Set((tagMapRows ?? []).map((row) => row.tag_id as string)));
+    const tagLabelById = new Map<string, string>();
+    if (tagIds.length > 0) {
+      const { data: tagRows, error: tagRowsError } = await supabase
+        .from('work_tags')
+        .select('id, label')
+        .in('id', tagIds);
+
+      if (tagRowsError) {
+        throw tagRowsError;
+      }
+
+      for (const tag of (tagRows ?? []) as DbWorkTagRow[]) {
+        tagLabelById.set(tag.id, tag.label);
+      }
+    }
+
+    const tagsByWorkId = new Map<string, string[]>();
+    for (const row of tagMapRows ?? []) {
+      const tagLabel = tagLabelById.get(row.tag_id as string);
+      if (!tagLabel) continue;
+      const bucket = tagsByWorkId.get(row.work_id as string) ?? [];
+      bucket.push(tagLabel);
+      tagsByWorkId.set(row.work_id as string, bucket);
+    }
+
+    for (const work of (works ?? []) as DbCanonicalWorkRow[]) {
+      canonicalWorkById.set(work.id, {
+        id: work.id,
+        title: work.title,
+        summary: work.summary,
+        releasedOn: work.released_on,
+        tags: tagsByWorkId.get(work.id) ?? [],
+      });
+    }
+  }
+
   return ((projects ?? []) as ProductionProject[]).map((project) => ({
     project,
+    canonicalWork: project.work_id ? canonicalWorkById.get(project.work_id) ?? null : null,
     sourceAsset: primaryAssetsByProject.get(project.id) ?? null,
     banners: (bannersByProject.get(project.id) ?? []).sort((a, b) => a.sortOrder - b.sortOrder),
   }));
@@ -320,6 +402,10 @@ type EnsureProjectResult = {
 
 type EnsureProjectOptions = {
   overwriteExisting?: boolean;
+  workTitle?: string | null;
+  workSummary?: string | null;
+  releasedOn?: string | null;
+  workTags?: string[];
 };
 
 type ProjectStorageFile = {
@@ -618,6 +704,15 @@ export async function ensureProductionProjectFromAsset(
   const workDisplayCode = formatWorkDisplayCode(asset.work_number);
   const variantNumber = asset.variant_number ?? 1;
   const title = buildProjectTitle(asset);
+  const canonical = await ensureCanonicalWorkVariant({
+    workSeriesSlug: asset.work_series_slug,
+    workNumber: asset.work_number,
+    variantNumber,
+    workTitle: options.workTitle,
+    workSummary: options.workSummary,
+    releasedOn: options.releasedOn,
+    workTags: options.workTags,
+  });
 
   const { data: existingProject, error: existingProjectError } = await supabase
     .from('production_projects')
@@ -649,6 +744,12 @@ export async function ensureProductionProjectFromAsset(
           work_number: asset.work_number,
           work_display_code: workDisplayCode,
           variant_number: variantNumber,
+          work_id: canonical.workId,
+          variant_id: canonical.variantId,
+          work_title: normalizeProjectText(options.workTitle),
+          work_summary: normalizeProjectText(options.workSummary),
+          released_on: normalizeProjectText(options.releasedOn),
+          work_tags: options.workTags ?? null,
           status: 'draft',
           title,
           created_by: userId,
@@ -675,6 +776,38 @@ export async function ensureProductionProjectFromAsset(
         throw packageError;
       }
     } else if (!options.overwriteExisting) {
+      if (project.work_id !== canonical.workId || project.variant_id !== canonical.variantId) {
+        const { error: relinkError } = await supabase
+          .from('production_projects')
+          .update({
+            work_id: canonical.workId,
+            variant_id: canonical.variantId,
+            work_title: normalizeProjectText(options.workTitle) ?? project.work_title,
+            work_summary:
+              options.workSummary !== undefined ? normalizeProjectText(options.workSummary) : project.work_summary,
+            released_on:
+              options.releasedOn !== undefined ? normalizeProjectText(options.releasedOn) : project.released_on,
+            work_tags: options.workTags ?? project.work_tags,
+          })
+          .eq('id', project.id);
+
+        if (relinkError) {
+          throw relinkError;
+        }
+
+        project = {
+          ...project,
+          work_id: canonical.workId,
+          variant_id: canonical.variantId,
+          work_title: normalizeProjectText(options.workTitle) ?? project.work_title,
+          work_summary:
+            options.workSummary !== undefined ? normalizeProjectText(options.workSummary) : project.work_summary,
+          released_on:
+            options.releasedOn !== undefined ? normalizeProjectText(options.releasedOn) : project.released_on,
+          work_tags: options.workTags ?? project.work_tags,
+        };
+      }
+
       const [summary] = await loadProjectSummariesByIds([project.id]);
       return {
         project,
@@ -689,6 +822,40 @@ export async function ensureProductionProjectFromAsset(
         asset,
         userId,
       });
+
+      const { error: relinkError } = await supabase
+        .from('production_projects')
+        .update({
+          work_id: canonical.workId,
+          variant_id: canonical.variantId,
+          work_title:
+            options.workTitle !== undefined ? normalizeProjectText(options.workTitle) : project.work_title,
+          work_summary:
+            options.workSummary !== undefined ? normalizeProjectText(options.workSummary) : project.work_summary,
+          released_on:
+            options.releasedOn !== undefined ? normalizeProjectText(options.releasedOn) : project.released_on,
+          work_tags: options.workTags ?? project.work_tags,
+          title,
+        })
+        .eq('id', project.id);
+
+      if (relinkError) {
+        throw relinkError;
+      }
+
+      project = {
+        ...project,
+        work_id: canonical.workId,
+        variant_id: canonical.variantId,
+        work_title:
+          options.workTitle !== undefined ? normalizeProjectText(options.workTitle) : project.work_title,
+        work_summary:
+          options.workSummary !== undefined ? normalizeProjectText(options.workSummary) : project.work_summary,
+        released_on:
+          options.releasedOn !== undefined ? normalizeProjectText(options.releasedOn) : project.released_on,
+        work_tags: options.workTags ?? project.work_tags,
+        title,
+      };
     }
 
     const { error: assetInsertError } = await supabase
@@ -740,3 +907,26 @@ export async function ensureProductionProjectFromAsset(
 }
 
 export { getPrimaryEditBanner };
+
+export async function updateProductionProjectWorkMetadata(params: {
+  projectId: string;
+  workTitle: string;
+  workSummary: string;
+  releasedOn: string;
+  workTags: string[];
+}): Promise<void> {
+  const supabase = await getSupabase();
+  const { error } = await supabase
+    .from('production_projects')
+    .update({
+      work_title: normalizeProjectText(params.workTitle),
+      work_summary: normalizeProjectText(params.workSummary),
+      released_on: normalizeProjectText(params.releasedOn),
+      work_tags: params.workTags,
+    })
+    .eq('id', params.projectId);
+
+  if (error) {
+    throw error;
+  }
+}
