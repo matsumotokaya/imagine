@@ -185,6 +185,36 @@ See [docs/DATABASE.md](docs/DATABASE.md) for full schema details.
 3. Set environment variables (see above)
 4. Add custom domain via Vercel → Settings → Domains
 
+## Session Note: 2026-06-25
+
+This session shipped the current production baseline for admin workflow and account notification changes.
+
+- Implemented Content Factory authoring defaults:
+  - release date defaults to today
+  - work title can be prefilled from episode numbering conventions
+  - work-tag suggestions/history are easier to reuse
+  - default image selection flow favors common official assets such as character cutouts
+- Updated Factory Project Manager defaults:
+  - list opens on `draft`
+  - returns to `draft` after actions
+  - default sort is newest registration first
+- Expanded Admin Dashboard:
+  - premium / free user tiles open a user directory view
+  - admin user directory fetch now goes through `get-admin-user-directory`
+- Added Resend-based account notifications from Supabase Edge Functions:
+  - signup notifications to registrant and `contact@whatif-ep.xyz`
+  - premium activation notifications to registrant and admin
+- Signup notification timing was corrected:
+  - email/password signup no longer sends before verify
+  - verified-account notification is sent after email confirmation
+  - production behavior was checked against a real account and confirmed to send after verify
+
+Remaining production verification:
+
+- Premium activation notification still needs a real production confirmation run
+- The wording of the verified-account welcome mail still reads like immediate signup success and should be revised in a later pass
+- Gallery wallpaper purchase notification is implemented on the Gallery webhook side and needs separate production confirmation there
+
 ## Documentation
 
 - [Renewal Status](docs/RENEWAL_STATUS.md) - Current checkpoint, next-session restart point, and the unresolved thumbnail-save blocker
