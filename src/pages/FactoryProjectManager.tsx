@@ -109,21 +109,30 @@ function chipClass(active: boolean): string {
     : 'rounded-full border border-gray-700 bg-[#171717] px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-gray-500 hover:text-gray-100';
 }
 
-type SortOrder = 'latest' | 'oldest';
+type SortOrder = 'registered_latest' | 'registered_oldest' | 'work_latest' | 'work_oldest';
+
+function compareByCreatedAt(
+  a: ProductionProjectSummary,
+  b: ProductionProjectSummary,
+  order: Extract<SortOrder, 'registered_latest' | 'registered_oldest'>,
+): number {
+  const diff = new Date(a.project.created_at).getTime() - new Date(b.project.created_at).getTime();
+  return order === 'registered_latest' ? -diff : diff;
+}
 
 // Sort by work number first, then variant number, so the same work's
-// variants stay grouped. "latest" puts the highest number on top.
+// variants stay grouped.
 function compareByNumber(
   a: ProductionProjectSummary,
   b: ProductionProjectSummary,
-  order: SortOrder,
+  order: Extract<SortOrder, 'work_latest' | 'work_oldest'>,
 ): number {
   const workDiff = (a.project.work_number ?? 0) - (b.project.work_number ?? 0);
   const diff =
     workDiff !== 0
       ? workDiff
       : (a.project.variant_number ?? 0) - (b.project.variant_number ?? 0);
-  return order === 'latest' ? -diff : diff;
+  return order === 'work_latest' ? -diff : diff;
 }
 
 type FactoryBannerCardProps = {
@@ -294,8 +303,8 @@ export function FactoryProjectManager() {
     isLoading,
     error,
   } = useRecentProductionProjects(PROJECT_LIMIT, !!user && profile?.role === 'admin');
-  const [statusFilter, setStatusFilter] = useState<ProductionProjectStatus | 'all'>('all');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('latest');
+  const [statusFilter, setStatusFilter] = useState<ProductionProjectStatus | 'all'>('draft');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('registered_latest');
 
   // Only offer status chips that actually exist in the loaded projects.
   const availableStatuses = useMemo(() => {
@@ -311,7 +320,12 @@ export function FactoryProjectManager() {
       statusFilter === 'all'
         ? projects
         : projects.filter((entry) => entry.project.status === statusFilter);
-    return [...filtered].sort((a, b) => compareByNumber(a, b, sortOrder));
+    return [...filtered].sort((a, b) => {
+      if (sortOrder === 'registered_latest' || sortOrder === 'registered_oldest') {
+        return compareByCreatedAt(a, b, sortOrder);
+      }
+      return compareByNumber(a, b, sortOrder);
+    });
   }, [projects, statusFilter, sortOrder]);
 
   const handlePublish = async (entry: ProductionProjectSummary) => {
@@ -476,17 +490,31 @@ export function FactoryProjectManager() {
               </span>
               <button
                 type="button"
-                onClick={() => setSortOrder('latest')}
-                className={chipClass(sortOrder === 'latest')}
+                onClick={() => setSortOrder('registered_latest')}
+                className={chipClass(sortOrder === 'registered_latest')}
               >
                 {t('banner:factorySortLatest')}
               </button>
               <button
                 type="button"
-                onClick={() => setSortOrder('oldest')}
-                className={chipClass(sortOrder === 'oldest')}
+                onClick={() => setSortOrder('registered_oldest')}
+                className={chipClass(sortOrder === 'registered_oldest')}
               >
                 {t('banner:factorySortOldest')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortOrder('work_latest')}
+                className={chipClass(sortOrder === 'work_latest')}
+              >
+                Work # ↓
+              </button>
+              <button
+                type="button"
+                onClick={() => setSortOrder('work_oldest')}
+                className={chipClass(sortOrder === 'work_oldest')}
+              >
+                Work # ↑
               </button>
             </div>
           </div>

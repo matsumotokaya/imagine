@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -131,6 +131,115 @@ const implementationPhases = [
 const MAX_FILE_SIZE_MB = 20;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
+type TagHistoryRow = {
+  tags: string[] | null;
+  usedAt: string | null;
+};
+
+type TagSuggestionSet = {
+  recommended: string | null;
+  recent: string[];
+  popular: string[];
+  history: string[];
+};
+
+function getTodayDateInputValue(): string {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 10);
+}
+
+function buildDefaultWorkTitle(seriesSlug: WorkSeriesSlug, workNumber: number): string {
+  return `${formatSeriesLabel(seriesSlug).toUpperCase()} ${formatWorkDisplayCode(workNumber)}`;
+}
+
+function appendTagToInput(currentValue: string, tag: string): string {
+  const normalizedTag = tag.trim();
+  if (!normalizedTag) {
+    return currentValue;
+  }
+
+  const currentTags = parseTagInput(currentValue);
+  const existing = new Set(currentTags.map((value) => value.toLowerCase()));
+  if (existing.has(normalizedTag.toLowerCase())) {
+    return currentTags.join(', ');
+  }
+
+  return [...currentTags, normalizedTag].join(', ');
+}
+
+function buildTagSuggestionSet(rows: TagHistoryRow[]): TagSuggestionSet {
+  const stats = new Map<string, { label: string; count: number; lastUsedAt: string | null }>();
+
+  for (const row of rows) {
+    for (const rawTag of row.tags ?? []) {
+      const label = rawTag.trim();
+      if (!label) {
+        continue;
+      }
+
+      const key = label.toLowerCase();
+      const existing = stats.get(key);
+
+      if (!existing) {
+        stats.set(key, {
+          label,
+          count: 1,
+          lastUsedAt: row.usedAt,
+        });
+        continue;
+      }
+
+      existing.count += 1;
+      if (!existing.lastUsedAt || (row.usedAt && row.usedAt > existing.lastUsedAt)) {
+        existing.lastUsedAt = row.usedAt;
+        existing.label = label;
+      }
+    }
+  }
+
+  const entries = Array.from(stats.values());
+  const recent = entries
+    .slice()
+    .sort((a, b) => {
+      if (a.lastUsedAt === b.lastUsedAt) {
+        return b.count - a.count;
+      }
+      if (!a.lastUsedAt) {
+        return 1;
+      }
+      if (!b.lastUsedAt) {
+        return -1;
+      }
+      return b.lastUsedAt.localeCompare(a.lastUsedAt);
+    })
+    .map((entry) => entry.label);
+  const popular = entries
+    .slice()
+    .sort((a, b) => {
+      if (a.count === b.count) {
+        if (!a.lastUsedAt) {
+          return 1;
+        }
+        if (!b.lastUsedAt) {
+          return -1;
+        }
+        return b.lastUsedAt.localeCompare(a.lastUsedAt);
+      }
+      return b.count - a.count;
+    })
+    .map((entry) => entry.label);
+
+  const history = Array.from(new Set([...recent, ...popular]));
+
+  return {
+    recommended: recent[0] ?? popular[0] ?? null,
+    recent: recent.slice(0, 6),
+    popular: popular.slice(0, 6),
+    history: history.slice(0, 12),
+  };
+}
+
 function statusClasses(status: FactoryStatus): string {
   if (status === 'live') {
     return 'bg-green-100 text-green-800 border-green-200';
@@ -154,6 +263,7 @@ function statusLabel(status: FactoryStatus): string {
 export function ContentFactory() {
   const { user, profile, loading } = useAuth();
   const queryClient = useQueryClient();
+  const todayDefault = useMemo(() => getTodayDateInputValue(), []);
   const [officialAssets, setOfficialAssets] = useState<DefaultImage[]>([]);
   const [recentProjects, setRecentProjects] = useState<ProductionProjectSummary[]>([]);
   const [assetsLoading, setAssetsLoading] = useState(true);
@@ -165,8 +275,8 @@ export function ContentFactory() {
   const [seriesSlug, setSeriesSlug] = useState<WorkSeriesSlug>('episode');
   const [workNumber, setWorkNumber] = useState('1');
   const [variantNumber, setVariantNumber] = useState('1');
-  const [workTitle, setWorkTitle] = useState('');
-  const [releasedOn, setReleasedOn] = useState('');
+  const [workTitle, setWorkTitle] = useState(() => buildDefaultWorkTitle('episode', 1));
+  const [releasedOn, setReleasedOn] = useState(() => todayDefault);
   const [workSummary, setWorkSummary] = useState('');
   const [workTagInput, setWorkTagInput] = useState('');
   const [assetRole, setAssetRole] = useState<(typeof OFFICIAL_ASSET_ROLE_OPTIONS)[number]['value']>('character_cutout');
@@ -175,6 +285,21 @@ export function ContentFactory() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [workTagSuggestions, setWorkTagSuggestions] = useState<TagSuggestionSet>({
+    recommended: null,
+    recent: [],
+    popular: [],
+    history: [],
+  });
+  const [assetTagSuggestions, setAssetTagSuggestions] = useState<TagSuggestionSet>({
+    recommended: null,
+    recent: [],
+    popular: [],
+    history: [],
+  });
+  const lastAutoWorkTitleRef = useRef(buildDefaultWorkTitle('episode', 1));
+  const lastAutoWorkTagRef = useRef<string | null>(null);
+  const lastAutoAssetTagRef = useRef<string | null>(null);
 
   const recentProjectMap = useMemo(() => {
     const map = new Map<string, ProductionProjectSummary>();
@@ -225,6 +350,45 @@ export function ContentFactory() {
     }
   };
 
+  const loadTagSuggestions = async () => {
+    try {
+      const supabase = await getSupabase();
+      const [{ data: workRows, error: workError }, { data: assetRows, error: assetError }] = await Promise.all([
+        supabase
+          .from('production_projects')
+          .select('work_tags, updated_at')
+          .order('updated_at', { ascending: false })
+          .limit(120),
+        supabase
+          .from('default_images')
+          .select('tags, created_at')
+          .order('created_at', { ascending: false })
+          .limit(120),
+      ]);
+
+      if (workError) {
+        throw workError;
+      }
+      if (assetError) {
+        throw assetError;
+      }
+
+      const workHistoryRows: TagHistoryRow[] = (workRows ?? []).map((row) => ({
+        tags: row.work_tags as string[] | null,
+        usedAt: row.updated_at as string | null,
+      }));
+      const assetHistoryRows: TagHistoryRow[] = (assetRows ?? []).map((row) => ({
+        tags: row.tags as string[] | null,
+        usedAt: row.created_at as string | null,
+      }));
+
+      setWorkTagSuggestions(buildTagSuggestionSet(workHistoryRows));
+      setAssetTagSuggestions(buildTagSuggestionSet(assetHistoryRows));
+    } catch (error) {
+      console.error('Failed to load tag suggestions:', error);
+    }
+  };
+
   useEffect(() => {
     if (!user || profile?.role !== 'admin') {
       return;
@@ -232,7 +396,59 @@ export function ContentFactory() {
 
     void loadOfficialAssets();
     void loadProjects();
+    void loadTagSuggestions();
   }, [profile?.role, user]);
+
+  useEffect(() => {
+    const parsedWorkNumber = Number(workNumber);
+    const nextAutoTitle = buildDefaultWorkTitle(
+      seriesSlug,
+      Number.isInteger(parsedWorkNumber) && parsedWorkNumber > 0 ? parsedWorkNumber : 0,
+    );
+
+    setWorkTitle((current) => {
+      const trimmed = current.trim();
+      if (!trimmed || current === lastAutoWorkTitleRef.current) {
+        return nextAutoTitle;
+      }
+      return current;
+    });
+    lastAutoWorkTitleRef.current = nextAutoTitle;
+  }, [seriesSlug, workNumber]);
+
+  useEffect(() => {
+    setReleasedOn((current) => current.trim() || todayDefault);
+  }, [todayDefault]);
+
+  useEffect(() => {
+    if (!workTagSuggestions.recommended) {
+      return;
+    }
+
+    setWorkTagInput((current) => {
+      const trimmed = current.trim();
+      if (!trimmed || trimmed === (lastAutoWorkTagRef.current ?? '')) {
+        return workTagSuggestions.recommended ?? '';
+      }
+      return current;
+    });
+    lastAutoWorkTagRef.current = workTagSuggestions.recommended;
+  }, [workTagSuggestions.recommended]);
+
+  useEffect(() => {
+    if (!assetTagSuggestions.recommended) {
+      return;
+    }
+
+    setAssetTagInput((current) => {
+      const trimmed = current.trim();
+      if (!trimmed || trimmed === (lastAutoAssetTagRef.current ?? '')) {
+        return assetTagSuggestions.recommended ?? '';
+      }
+      return current;
+    });
+    lastAutoAssetTagRef.current = assetTagSuggestions.recommended;
+  }, [assetTagSuggestions.recommended]);
 
   const handleFactoryUpload = async () => {
     if (!user) {
@@ -370,6 +586,7 @@ export function ContentFactory() {
       }
 
       await loadOfficialAssets();
+      await loadTagSuggestions();
       setSelectedFiles([]);
 
       const label = `${formatSeriesLabel(seriesSlug)} ${workCode}-${parsedVariantNumber}`;
@@ -571,6 +788,9 @@ export function ContentFactory() {
                   </option>
                 ))}
               </select>
+              <span className="mt-2 block text-xs text-gray-500">
+                Default is `Character Cutout`. Change it here when uploading a background, logo, reference, or derived asset.
+              </span>
             </label>
           </div>
 
@@ -587,9 +807,12 @@ export function ContentFactory() {
                   type="text"
                   value={workTitle}
                   onChange={(event) => setWorkTitle(event.target.value)}
-                  placeholder="EPISODE 0465"
+                  placeholder={buildDefaultWorkTitle(seriesSlug, Number(workNumber) || 0)}
                   className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
                 />
+                <span className="mt-2 block text-xs text-gray-500 text-pretty">
+                  `Series + Work Number` から自動入力されます。必要なら手動で上書きできます。
+                </span>
               </label>
 
               <label className="block">
@@ -600,6 +823,9 @@ export function ContentFactory() {
                   onChange={(event) => setReleasedOn(event.target.value)}
                   className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
                 />
+                <span className="mt-2 block text-xs text-gray-500">
+                  Default: {todayDefault}
+                </span>
               </label>
 
               <div className="hidden lg:block" />
@@ -611,9 +837,68 @@ export function ContentFactory() {
                 type="text"
                 value={workTagInput}
                 onChange={(event) => setWorkTagInput(event.target.value)}
+                list="content-factory-work-tags"
                 placeholder="nature, portrait, cyberpunk"
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
               />
+              <datalist id="content-factory-work-tags">
+                {workTagSuggestions.history.map((tag) => (
+                  <option key={tag} value={tag} />
+                ))}
+              </datalist>
+              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="flex flex-wrap gap-2">
+                  {workTagSuggestions.recommended && (
+                    <button
+                      type="button"
+                      onClick={() => setWorkTagInput((current) => appendTagToInput(current, workTagSuggestions.recommended ?? ''))}
+                      className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Recommended: {workTagSuggestions.recommended}
+                    </button>
+                  )}
+                  {workTagSuggestions.popular
+                    .filter((tag) => tag !== workTagSuggestions.recommended)
+                    .slice(0, 4)
+                    .map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setWorkTagInput((current) => appendTagToInput(current, tag))}
+                        className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                </div>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium text-gray-500">History</span>
+                  <select
+                    defaultValue=""
+                    aria-label="Add work tag from history"
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (!value) {
+                        return;
+                      }
+                      setWorkTagInput((current) => appendTagToInput(current, value));
+                      event.target.value = '';
+                    }}
+                    className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                  >
+                    <option value="">Add from history...</option>
+                    {workTagSuggestions.history.map((tag) => (
+                      <option key={tag} value={tag}>
+                        {tag}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <span className="mt-2 block text-xs text-gray-500 text-pretty">
+                直近と使用頻度の高いタグから候補を出します。カンマ区切りで複数登録できます。
+              </span>
             </label>
 
             <label className="mt-4 block">
@@ -635,9 +920,68 @@ export function ContentFactory() {
                 type="text"
                 value={assetTagInput}
                 onChange={(event) => setAssetTagInput(event.target.value)}
+                list="content-factory-asset-tags"
                 placeholder="character, main, pink"
                 className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
               />
+              <datalist id="content-factory-asset-tags">
+                {assetTagSuggestions.history.map((tag) => (
+                  <option key={tag} value={tag} />
+                ))}
+              </datalist>
+              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="flex flex-wrap gap-2">
+                  {assetTagSuggestions.recommended && (
+                    <button
+                      type="button"
+                      onClick={() => setAssetTagInput((current) => appendTagToInput(current, assetTagSuggestions.recommended ?? ''))}
+                      className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Recommended: {assetTagSuggestions.recommended}
+                    </button>
+                  )}
+                  {assetTagSuggestions.popular
+                    .filter((tag) => tag !== assetTagSuggestions.recommended)
+                    .slice(0, 4)
+                    .map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setAssetTagInput((current) => appendTagToInput(current, tag))}
+                        className="rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                </div>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium text-gray-500">History</span>
+                  <select
+                    defaultValue=""
+                    aria-label="Add asset tag from history"
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (!value) {
+                        return;
+                      }
+                      setAssetTagInput((current) => appendTagToInput(current, value));
+                      event.target.value = '';
+                    }}
+                    className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900"
+                  >
+                    <option value="">Add from history...</option>
+                    {assetTagSuggestions.history.map((tag) => (
+                      <option key={tag} value={tag}>
+                        {tag}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <span className="mt-2 block text-xs text-gray-500 text-pretty">
+                公式素材で直近またはよく使われるタグを再利用できます。
+              </span>
             </label>
 
             <label className="block">

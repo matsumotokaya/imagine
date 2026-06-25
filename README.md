@@ -159,6 +159,14 @@ When local development points at the production Supabase project, keep `VITE_STR
 
 For production (Vercel), set these in Project Settings → Environment Variables.
 
+Supabase Edge Functions also need these secrets for signup / premium notification emails:
+
+```env
+RESEND_API_KEY=re_xxx
+RESEND_FROM_EMAIL=noreply@whatif-ep.xyz
+CONTACT_NOTIFICATION_EMAIL=contact@whatif-ep.xyz
+```
+
 ## Database Schema
 
 ### Core Tables

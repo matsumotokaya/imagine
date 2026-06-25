@@ -7,6 +7,18 @@ export interface StorageBucket {
   bytes: number;
 }
 
+export interface AdminUserSummary {
+  id: string;
+  email: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+  role: 'admin' | 'user';
+  subscriptionTier: 'free' | 'premium';
+  subscriptionStatus: 'active' | 'canceling' | 'canceled' | null;
+  subscriptionExpiresAt: string | null;
+  createdAt: string | null;
+}
+
 export interface AdminStats {
   totalUsers: number;
   premiumUsers: number;
@@ -22,6 +34,8 @@ export interface AdminStats {
   storageTotalBytes: number;
   storageTotalObjects: number;
   storageBuckets: StorageBucket[];
+  users: AdminUserSummary[];
+  userDirectoryError: string | null;
 }
 
 export const adminStatsKeys = {
@@ -45,6 +59,44 @@ async function fetchAdminStats(): Promise<AdminStats> {
       }))
     : [];
 
+  let users: AdminUserSummary[] = [];
+  let userDirectoryError: string | null = null;
+
+  const {
+    data: sessionData,
+    error: sessionError,
+  } = await supabase.auth.getSession();
+
+  if (sessionError) {
+    userDirectoryError = sessionError.message;
+  }
+
+  const accessToken = sessionData.session?.access_token;
+  const { data: directoryData, error: profilesError } = accessToken
+    ? await supabase.functions.invoke('get-admin-user-directory', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      })
+    : { data: null, error: new Error('Login session is missing on the client.') };
+
+  if (profilesError) {
+    console.error('[useAdminStats] Error fetching profiles for admin directory:', profilesError);
+    userDirectoryError = profilesError.message;
+  } else {
+    users = (Array.isArray(directoryData?.users) ? directoryData.users : []).map((profile: Record<string, unknown>) => ({
+      id: profile.id,
+      email: profile.email ?? '',
+      fullName: profile.full_name ?? null,
+      avatarUrl: profile.avatar_url ?? null,
+      role: (profile.role ?? 'user') as 'admin' | 'user',
+      subscriptionTier: (profile.subscription_tier ?? 'free') as 'free' | 'premium',
+      subscriptionStatus: (profile.subscription_status ?? null) as 'active' | 'canceling' | 'canceled' | null,
+      subscriptionExpiresAt: profile.subscription_expires_at ?? null,
+      createdAt: profile.created_at ?? null,
+    }));
+  }
+
   return {
     totalUsers: data.total_users ?? 0,
     premiumUsers: data.premium_users ?? 0,
@@ -58,6 +110,8 @@ async function fetchAdminStats(): Promise<AdminStats> {
     storageTotalBytes: Number(data.storage_total_bytes ?? 0),
     storageTotalObjects: Number(data.storage_total_objects ?? 0),
     storageBuckets: buckets,
+    users,
+    userDirectoryError,
   };
 }
 

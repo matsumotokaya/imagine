@@ -1,10 +1,56 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import Stripe from 'https://esm.sh/stripe@14.11.0?target=deno'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
+import { sendPremiumActivatedNotifications } from '../_shared/account-notifications.ts'
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
   apiVersion: '2023-10-16',
 })
+
+type ProfileRow = {
+  id: string
+  email: string | null
+  full_name: string | null
+  subscription_tier: 'free' | 'premium' | null
+  subscription_status: 'active' | 'canceling' | 'canceled' | null
+  subscription_expires_at: string | null
+}
+
+const loadProfile = async (supabase: ReturnType<typeof createClient>, userId: string) => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, email, full_name, subscription_tier, subscription_status, subscription_expires_at')
+    .eq('id', userId)
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return data as ProfileRow
+}
+
+const maybeSendPremiumNotification = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  previousProfile: ProfileRow | null,
+) => {
+  if (previousProfile?.subscription_tier === 'premium') {
+    return
+  }
+
+  const nextProfile = await loadProfile(supabase, userId)
+  if (nextProfile.subscription_tier !== 'premium' || !nextProfile.email) {
+    return
+  }
+
+  await sendPremiumActivatedNotifications({
+    email: nextProfile.email,
+    fullName: nextProfile.full_name,
+    status: nextProfile.subscription_status,
+    expiresAt: nextProfile.subscription_expires_at,
+  })
+}
 
 serve(async (req) => {
   const signature = req.headers.get('stripe-signature')
@@ -72,6 +118,13 @@ serve(async (req) => {
           break
         }
 
+        let previousProfile: ProfileRow | null = null
+        try {
+          previousProfile = await loadProfile(supabase, userId)
+        } catch (error) {
+          console.error('Failed to load profile before premium upgrade:', error)
+        }
+
         // Calculate subscription expiration (30 days from now)
         const expiresAt = new Date()
         expiresAt.setDate(expiresAt.getDate() + 30)
@@ -92,6 +145,11 @@ serve(async (req) => {
           console.error('Error updating profile:', error)
         } else {
           console.log(`User ${userId} upgraded to premium`)
+          try {
+            await maybeSendPremiumNotification(supabase, userId, previousProfile)
+          } catch (notificationError) {
+            console.error('Failed to send premium activation notification:', notificationError)
+          }
         }
         break
       }
@@ -103,6 +161,13 @@ serve(async (req) => {
         if (!userId) {
           console.error('No user_id found in subscription metadata or by customer_id')
           break
+        }
+
+        let previousProfile: ProfileRow | null = null
+        try {
+          previousProfile = await loadProfile(supabase, userId)
+        } catch (error) {
+          console.error('Failed to load profile before subscription update:', error)
         }
 
         const expiresAt = new Date(subscription.current_period_end * 1000)
@@ -131,6 +196,13 @@ serve(async (req) => {
           console.error('Error updating subscription:', error)
         } else {
           console.log(`Subscription updated for user ${userId} with status ${subscriptionStatus}`)
+          if (subscription.status === 'active') {
+            try {
+              await maybeSendPremiumNotification(supabase, userId, previousProfile)
+            } catch (notificationError) {
+              console.error('Failed to send premium activation notification:', notificationError)
+            }
+          }
         }
         break
       }

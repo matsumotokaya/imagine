@@ -1,6 +1,7 @@
+import { useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useAdminStats } from '../hooks/useAdminStats';
+import { type AdminUserSummary, useAdminStats } from '../hooks/useAdminStats';
 import { SitePageLayout } from '../components/SitePageLayout';
 
 const GB = 1024 * 1024 * 1024;
@@ -10,12 +11,40 @@ const SUPABASE_FREE_DB_BYTES = 500 * MB; // 500 MB
 
 const SUPABASE_PROJECT_REF = 'rgqduwojvylkulhyodqg';
 const SUPABASE_PROJECT_URL = `https://supabase.com/dashboard/project/${SUPABASE_PROJECT_REF}`;
+type UserTier = 'premium' | 'free';
 
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function formatSubscriptionStatus(status: AdminUserSummary['subscriptionStatus']): string {
+  switch (status) {
+    case 'active':
+      return 'Active';
+    case 'canceling':
+      return 'Canceling';
+    case 'canceled':
+      return 'Canceled';
+    default:
+      return 'Unknown';
+  }
 }
 
 function UsageBar({ label, used, limit, note }: { label: string; used: number; limit: number; note?: string }) {
@@ -53,9 +82,33 @@ function UsageBar({ label, used, limit, note }: { label: string; used: number; l
   );
 }
 
-function StatTile({ label, value, accent }: { label: string; value: number | string; accent?: boolean }) {
+function StatTile({
+  label,
+  value,
+  accent,
+  onClick,
+}: {
+  label: string;
+  value: number | string;
+  accent?: boolean;
+  onClick?: () => void;
+}) {
+  const className = `rounded-lg p-4 text-center ${accent ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50'} ${
+    onClick ? 'transition-colors hover:bg-gray-100' : ''
+  }`;
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        <div className={`font-bold ${accent ? 'text-3xl text-indigo-600' : 'text-2xl text-gray-900'}`}>{value}</div>
+        <div className="mt-1 text-xs text-gray-500">{label}</div>
+        <div className="mt-2 text-[11px] font-medium text-indigo-600">Tap to view accounts</div>
+      </button>
+    );
+  }
+
   return (
-    <div className={`rounded-lg p-4 text-center ${accent ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50'}`}>
+    <div className={className}>
       <div className={`font-bold ${accent ? 'text-3xl text-indigo-600' : 'text-2xl text-gray-900'}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-1">{label}</div>
     </div>
@@ -109,9 +162,113 @@ function ResourceLink({
   );
 }
 
+function UserListModal({
+  isOpen,
+  tier,
+  users,
+  onClose,
+  error,
+}: {
+  isOpen: boolean;
+  tier: UserTier;
+  users: AdminUserSummary[];
+  onClose: () => void;
+  error: string | null;
+}) {
+  if (!isOpen) {
+    return null;
+  }
+
+  const title = tier === 'premium' ? 'Premium Users' : 'Free Users';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-user-list-title"
+        className="flex max-h-[80dvh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4">
+          <div>
+            <h2 id="admin-user-list-title" className="text-lg font-semibold text-gray-900 text-balance">
+              {title}
+            </h2>
+            <p className="mt-1 text-sm text-gray-500 text-pretty">
+              {users.length} account(s)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close user list"
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-6 py-5">
+          {error ? (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              Failed to load user directory: {error}
+            </div>
+          ) : users.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500">
+              No accounts in this tier.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {users.map((account) => (
+                <div key={account.id} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="truncate text-sm font-semibold text-gray-900">
+                          {account.fullName || account.email || account.id}
+                        </div>
+                        {account.role === 'admin' ? (
+                          <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white">
+                            Admin
+                          </span>
+                        ) : null}
+                        <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600">
+                          {formatSubscriptionStatus(account.subscriptionStatus)}
+                        </span>
+                      </div>
+                      <div className="mt-1 truncate text-sm text-gray-600">{account.email || 'No email'}</div>
+                      <div className="mt-2 text-xs text-gray-500 tabular-nums">
+                        ID: {account.id}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500 sm:text-right">
+                      <div>Joined</div>
+                      <div className="font-medium text-gray-700 tabular-nums">{formatDateTime(account.createdAt)}</div>
+                      <div>Expires</div>
+                      <div className="font-medium text-gray-700 tabular-nums">
+                        {formatDateTime(account.subscriptionExpiresAt)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AdminDashboard() {
   const { user, profile, loading } = useAuth();
   const { data: stats, isLoading: statsLoading, error, refetch } = useAdminStats(user?.id);
+  const [activeUserTier, setActiveUserTier] = useState<UserTier | null>(null);
 
   if (loading) {
     return (
@@ -131,6 +288,10 @@ export function AdminDashboard() {
   const storageUsedBytes = hasRealStorage ? stats!.storageTotalBytes : libraryBytes;
   const buckets = stats?.storageBuckets ?? [];
   const freeUsers = Math.max((stats?.totalUsers ?? 0) - (stats?.premiumUsers ?? 0), 0);
+  const usersByTier = useMemo(() => ({
+    premium: (stats?.users ?? []).filter((account) => account.subscriptionTier === 'premium'),
+    free: (stats?.users ?? []).filter((account) => account.subscriptionTier !== 'premium'),
+  }), [stats?.users]);
 
   return (
     <SitePageLayout maxWidthClassName="max-w-2xl" mainClassName="py-12 sm:px-6">
@@ -166,8 +327,16 @@ export function AdminDashboard() {
                 <StatTile label="Total Users" value={stats?.totalUsers ?? 0} accent />
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <StatTile label="Premium Users" value={stats?.premiumUsers ?? 0} />
-                <StatTile label="Free Users" value={freeUsers} />
+                <StatTile
+                  label="Premium Users"
+                  value={stats?.premiumUsers ?? 0}
+                  onClick={() => setActiveUserTier('premium')}
+                />
+                <StatTile
+                  label="Free Users"
+                  value={freeUsers}
+                  onClick={() => setActiveUserTier('free')}
+                />
                 <StatTile label="Templates" value={stats?.totalTemplates ?? 0} />
                 <StatTile label="Banners" value={stats?.totalBanners ?? 0} />
                 <StatTile
@@ -177,6 +346,12 @@ export function AdminDashboard() {
                 <StatTile label="Storage Objects" value={stats?.storageTotalObjects ?? 0} />
               </div>
             </Card>
+
+            {stats?.userDirectoryError ? (
+              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                User directory could not be loaded. Counts are shown, but account details are unavailable until profile access is fixed.
+              </div>
+            ) : null}
 
             {/* 2. Current plan */}
             <Card title="現在のプラン" icon="workspace_premium">
@@ -347,6 +522,14 @@ export function AdminDashboard() {
           </>
         )}
       </div>
+
+      <UserListModal
+        isOpen={activeUserTier !== null}
+        tier={activeUserTier ?? 'premium'}
+        users={activeUserTier ? usersByTier[activeUserTier] : []}
+        onClose={() => setActiveUserTier(null)}
+        error={stats?.userDirectoryError ?? null}
+      />
     </SitePageLayout>
   );
 }

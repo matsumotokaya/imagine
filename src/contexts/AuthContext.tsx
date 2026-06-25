@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { getSupabase } from '../utils/supabase';
 import { useProfile } from '../hooks/useProfile';
 import { queryClient } from '../lib/queryClient';
 import { readSsoCookie, writeSsoCookie, clearSsoCookie } from '../utils/ssoCookie';
+import { notifySignupIfNeeded } from '../utils/accountNotifications';
 
 interface UserProfile {
   id: string;
@@ -50,6 +51,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const notifiedSignupUserIdsRef = useRef<Set<string>>(new Set());
+  const pendingSignupNotificationUserIdsRef = useRef<Set<string>>(new Set());
 
   // Use React Query for profile fetching
   const { data: profileData, isLoading: profileLoading } = useProfile(user?.id);
@@ -241,6 +244,46 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   } : null);
 
   const loading = authLoading || (user ? profileLoading : false);
+
+  useEffect(() => {
+    if (!user?.id || !session?.access_token || loading) {
+      return;
+    }
+
+    if (notifiedSignupUserIdsRef.current.has(user.id)) {
+      return;
+    }
+
+    if (pendingSignupNotificationUserIdsRef.current.has(user.id)) {
+      return;
+    }
+
+    void (async () => {
+      pendingSignupNotificationUserIdsRef.current.add(user.id);
+
+      try {
+        const retryDelaysMs = [0, 1500, 4000];
+
+        for (const delayMs of retryDelaysMs) {
+          if (delayMs > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+          }
+
+          const result = await notifySignupIfNeeded(session.access_token);
+          if (result?.sent || result?.alreadySent || result?.skipped === 'not_recent_signup') {
+            notifiedSignupUserIdsRef.current.add(user.id);
+            return;
+          }
+
+          if (result?.skipped !== 'email_not_verified') {
+            return;
+          }
+        }
+      } finally {
+        pendingSignupNotificationUserIdsRef.current.delete(user.id);
+      }
+    })();
+  }, [loading, session?.access_token, user?.email_confirmed_at, user?.id]);
 
   const value = {
     user,
