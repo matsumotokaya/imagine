@@ -53,6 +53,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [authLoading, setAuthLoading] = useState(true);
   const notifiedSignupUserIdsRef = useRef<Set<string>>(new Set());
   const pendingSignupNotificationUserIdsRef = useRef<Set<string>>(new Set());
+  const sessionRef = useRef<Session | null>(null);
+  const adoptingSharedSessionRef = useRef(false);
 
   // Use React Query for profile fetching
   const { data: profileData, isLoading: profileLoading } = useProfile(user?.id);
@@ -64,6 +66,46 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const bootstrapAuth = async () => {
       try {
         const supabase = await getSupabase();
+        const applySession = (nextSession: Session | null) => {
+          sessionRef.current = nextSession;
+          if (!isActive) {
+            return;
+          }
+
+          setSession(nextSession);
+          setUser(nextSession?.user ?? null);
+          setAuthLoading(false);
+        };
+
+        const adoptSharedSessionIfNeeded = async (): Promise<Session | null> => {
+          if (adoptingSharedSessionRef.current || sessionRef.current) {
+            return sessionRef.current;
+          }
+
+          const ssoTokens = readSsoCookie();
+          if (!ssoTokens) {
+            return null;
+          }
+
+          adoptingSharedSessionRef.current = true;
+          try {
+            const { data: ssoData, error: ssoError } = await supabase.auth.setSession({
+              access_token: ssoTokens.access_token,
+              refresh_token: ssoTokens.refresh_token,
+            });
+
+            if (ssoError || !ssoData.session) {
+              return null;
+            }
+
+            applySession(ssoData.session);
+            return ssoData.session;
+          } catch {
+            return null;
+          } finally {
+            adoptingSharedSessionRef.current = false;
+          }
+        };
 
         if (!isActive) {
           return;
@@ -71,6 +113,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         console.log('[AuthContext] Getting initial session...');
         let { data: { session } } = await supabase.auth.getSession();
+        sessionRef.current = session;
 
         if (!isActive) {
           return;
@@ -80,20 +123,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // cookie (set by whatif-ep.xyz) carries tokens, adopt that session.
         // Any failure (invalid/expired tokens) falls back to logged-out.
         if (!session) {
-          try {
-            const ssoTokens = readSsoCookie();
-            if (ssoTokens) {
-              const { data: ssoData, error: ssoError } = await supabase.auth.setSession({
-                access_token: ssoTokens.access_token,
-                refresh_token: ssoTokens.refresh_token,
-              });
-              if (!ssoError && ssoData.session) {
-                session = ssoData.session;
-              }
-            }
-          } catch {
-            // Ignore SSO failures; continue as logged-out.
-          }
+          session = await adoptSharedSessionIfNeeded();
         }
 
         if (!isActive) {
@@ -101,16 +131,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         console.log('[AuthContext] Got session:', session);
-        setSession(session);
-        setUser(session?.user ?? null);
-        setAuthLoading(false);
+        applySession(session);
 
         const {
           data: { subscription },
         } = supabase.auth.onAuthStateChange((event, nextSession) => {
-          setSession(nextSession);
-          setUser(nextSession?.user ?? null);
-          setAuthLoading(false);
+          applySession(nextSession);
 
           // Keep the shared SSO cookie in sync (side-effect only; never
           // call setSession from here to avoid auth-event loops).
@@ -138,6 +164,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         });
 
         unsubscribe = () => subscription.unsubscribe();
+
+        const handleVisibilityChange = () => {
+          if (document.visibilityState !== 'visible') {
+            return;
+          }
+
+          void adoptSharedSessionIfNeeded();
+        };
+
+        const handleWindowFocus = () => {
+          void adoptSharedSessionIfNeeded();
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleWindowFocus);
+
+        unsubscribe = () => {
+          subscription.unsubscribe();
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          window.removeEventListener('focus', handleWindowFocus);
+        };
       } catch (error) {
         if (!isActive) {
           return;

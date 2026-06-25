@@ -208,12 +208,21 @@ This session shipped the current production baseline for admin workflow and acco
   - email/password signup no longer sends before verify
   - verified-account notification is sent after email confirmation
   - production behavior was checked against a real account and confirmed to send after verify
+- Simplified cross-subdomain SSO was expanded:
+  - both apps now re-check the shared SSO cookie on boot, window focus, and tab visibility return
+  - this improves practical login carry-over between `whatif-ep.xyz` and `app.whatif-ep.xyz`
+  - this is still a lightweight client-managed bridge, not a full server-led session system
 
 Remaining production verification:
 
 - Premium activation notification still needs a real production confirmation run
 - The wording of the verified-account welcome mail still reads like immediate signup success and should be revised in a later pass
 - Gallery wallpaper purchase notification is implemented on the Gallery webhook side and needs separate production confirmation there
+
+Future auth hardening:
+
+- Replace the current shared JS-readable SSO cookie with an HttpOnly cookie based, server-led session flow
+- Revisit token refresh ownership so both apps do not rely on the same browser-readable refresh token
 
 ## Documentation
 
