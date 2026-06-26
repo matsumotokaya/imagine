@@ -1,7 +1,9 @@
 # R2 Migration Design (画像ストレージの Cloudflare R2 移行)
 
-> **Status: PLANNING / READY TO START** — 実データ照合済み・方針確定。Phase 0（インフラ）はユーザー操作待ち。
-> 最終更新: 2026-06-26
+> **Status: CLOSED — Phase 0/1/2 完了（2026-06-26）。** production出力をR2化し Supabase を 1.8GB→約897MB（1GB未満）に。新規publishも自動でR2。
+> 本ドキュメントは履歴・教訓・**残フェーズの前提**の記録として保持（削除しない）。残作業の着手チェックリストは下部「残作業」を参照。
+> 残フェーズ（default-images / banner資産 / library / 既存banner・upload）は **R2 delete経路の実装** と **provider列のDDL** が前提。
+> 関連: Gallery側のURL生成統合リファクタは `whatif-ep-xyz/docs/IMAGE_URL_REFACTOR.md`。
 > 対象: IMAGINE（`imagine/`）の Supabase プロジェクト **BANALIST**（ref `rgqduwojvylkulhyodqg`）
 
 ## 0. 背景と確定方針
