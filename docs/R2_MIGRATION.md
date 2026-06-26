@@ -1,145 +1,175 @@
 # R2 Migration Design (画像ストレージの Cloudflare R2 移行)
 
-> **Status: DESIGN ONLY（未実装）** — 次セッションで着手する前提の設計メモ。
-> 最終更新: 2026-06-24
+> **Status: PLANNING / READY TO START** — 実データ照合済み・方針確定。Phase 0（インフラ）はユーザー操作待ち。
+> 最終更新: 2026-06-26
+> 対象: IMAGINE（`imagine/`）の Supabase プロジェクト **BANALIST**（ref `rgqduwojvylkulhyodqg`）
 
-## 0. 背景・このドキュメントの位置づけ
+## 0. 背景と確定方針
 
-Supabase 無料プランの **Storage 1GB / Egress（帯域）** が逼迫しており、実バケット使用量は一時 1.6GB と上限超過していた。
-直近で **Storage Cleanup**（`/admin/storage-cleanup`）により fullres キャッシュ（~358MB）＋孤立ファイル（~54MB）をパージ済み。
-ただし容量の本体（production 出力 ~560MB、配置画像 ~274MB、default-images ~318MB）は **正当に参照中のコンテンツ**で、削除では減らせない。
+Supabase 無料プランの **Storage 1GB** を超過（実測 **約1.75GB**）。容量の本体は削除では減らせない正当な参照中コンテンツ。
+→ **増えていく画像アセットはすべて Cloudflare R2 に置き、Supabase Storage を新規書き込みから外す**。Supabase は容量が増えない小規模な静的素材だけに留める（理想は空に近づける）。
 
-→ 根本対策として **公開アセットを Cloudflare R2 へ移し、Supabase の容量・帯域から外す**。本書はその設計のみを残す。
+**確定事項（2026-06-26）**
+- 配信先: **新バケット `whatif-assets` + カスタムドメイン `assets.whatif-ep.xyz`**。
+- 方針: **新規書き込みは最初から全部 R2**。既存ファイルは**リスク順にバックフィル**（スコープ分割ではなく順番の管理）。
+- 最難所は **banners/templates の JSONB `elements[].src` に焼き込まれた full URL** → 最後に入念にテストして実施。
 
-## 1. なぜ R2 か
+## 0.1 実装ログ（2026-06-26）— Phase 1 コア = production出力のみ
 
-| | Supabase Storage (Free) | Cloudflare R2 (Free) |
+> 「新規書込は全部R2」が最終形だが、安全に切れる順序として **production出力を最初に**実装した。
+> 理由: production は (a) `production_outputs.storage_provider` 列が既設、(b) **固定ファイル名で upsert 上書き＝孤立ファイルが出ない**（R2 delete 未実装でも安全）、(c) URL生成箇所が `gallerySync` のみで読み取り更新が局所。
+> banner thumbnail/fullres と library(default_images/user_images) を**先送り**したのは、前者が**リビジョン付きファイル名＝旧版deleteが必要**（R2 delete経路が未実装だと孤立増殖）、後者が**provider列のDDL＋多数の読み取り更新**を要するため。
+
+**実装済み（コード）**
+- `src/utils/assetUrl.ts`（新規）: `resolveAssetUrl(provider,bucket,key,version)` / `getR2PublicUrl` / `toR2Key` / `isR2Configured` / `appendCacheBust`（移設）。R2キー = `{logicalBucket}/{path}`。
+- `src/utils/r2Upload.ts`（新規）: `uploadBlobToR2` = Edge Function `r2-presign` で署名 → 直 PUT。
+- `supabase/functions/r2-presign/index.ts`（新規）: JWT検証＋キー権限（`user-images/{uid}/…`本人のみ / `default-images/…`admin）＋`aws4fetch`でR2 presigned PUT。
+- `src/utils/storage.ts`: アップロードヘルパーに **opt-in `options.r2`** を追加（既定はSupabase）。`appendCacheBust`を`assetUrl`から再export。
+- `src/utils/productionOutputBuilder.ts`: production アップロードを `r2:true`、`storage_provider` を `isR2Configured?'r2':'supabase'`。
+- `src/utils/gallerySync.ts`: feed URL生成を `resolveAssetUrl`（provider対応）に。
+- （Gallery別repo）`whatif-ep-xyz/next.config.ts`: `images.remotePatterns` に `assets.whatif-ep.xyz` 追加。
+
+**起動前に必要（ユーザー作業）**
+- Edge Function デプロイ: `supabase functions deploy r2-presign`（R2シークレットは投入済み）。
+- IMAGINE Vercel に `VITE_R2_PUBLIC_BASE_URL=https://assets.whatif-ep.xyz`。
+- Gallery を再デプロイ（remotePatterns反映）。
+
+**未対応（後続フェーズ）**: R2 delete 経路（presigned DELETE）／banner assets の R2化／library(default_images・user_images) の provider列DDL＋読み取り更新／既存ファイルのバックフィル（Phase 2-4）。
+
+## 1. 実測した現状（2026-06-26, Supabase MCP read-only）
+
+### 1.1 バケット別
+
+| bucket | objects | サイズ |
 |---|---|---|
-| ストレージ | 1 GB | **10 GB** |
-| Egress（転送） | 月 ~5GB（プラン依存・課金要因） | **無料（egress 0円）** |
-| 認証連携 | Auth/RLS と直結 | 自前（presigned / Worker / 公開バケット） |
-| 既存利用 | 全画像 | **The Club 壁紙で利用中**（`pub-9339...r2.dev`, `VITE_THE_CLUB_R2_BASE_URL`） |
+| `user-images` | 1224 | **1384 MB** |
+| `default-images` | 364 | **369 MB** |
+| 合計 | | **約1753 MB（1.75GB）** |
 
-egress 無料が効くと、Supabase 帯域だけでなく **Vercel の Image Transformation コスト**圧も下がる（配信が R2 から直接になるため）。
+### 1.2 `user-images` の内訳（オーナー1アカウント `9c1674eb…` が 1042件 / 1357MB ＝ 98%）
+
+| prefix | objects | サイズ | 参照形態 | 移行難度 |
+|---|---|---|---|---|
+| `{uid}/production/` | 406 | **891 MB** | `production_outputs.storage_path`（**provider列既設**） | 低（列） |
+| `{uid}/downloads/` | 68 | **202 MB** | `banners.fullres_url`（full URL列） | 中（列・URL書換） |
+| `{uid}/{ts}-{rand}.png`（root upload） | ~多数 | **~244 MB** | **banners/templates `elements[].src`（JSONB full URL）** | 高（JSONB） |
+| `{uid}/migrated/` | 33 | 12 MB | 〃 / 列 | 中 |
+| `{uid}/thumbnails/` | 386 | 8 MB | `banners/templates.thumbnail_url`（full URL列） | 中（列・URL書換） |
+
+→ **公開・列ベースの `production`(891MB) + `default-images`(369MB) を出すだけで Supabase は約0.49GB（1GB未満）**。これを最初の山にする。
 
 ## 2. 現状の実装（移行で触る箇所）
 
 ### 2.1 URL の作り方
-- `getSupabaseStoragePublicUrl(bucket, path)` →
-  `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${encodedPath}`（[src/utils/supabase.ts](../src/utils/supabase.ts)）
-- `versionAssetUrl(url, updatedAt)` がキャッシュバスト用に `?v=updatedAt` を付与（[src/utils/bannerStorage.ts](../src/utils/bannerStorage.ts)）。R2 公開URLでもクエリ文字列は無害（無視される）。
+- `getSupabaseStoragePublicUrl(bucket, path)` → `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${encodedPath}`（[src/utils/supabase.ts](../src/utils/supabase.ts)）
+- `versionAssetUrl(url, updatedAt)` / `appendCacheBust()` が `?v=updatedAt` を付与（[src/utils/bannerStorage.ts](../src/utils/bannerStorage.ts) / `storage.ts`）。R2 公開URLでもクエリ文字列は無害。
 
-### 2.2 参照の保存形態（移行の最難所）
-画像参照は **完全な公開URL文字列**で、複数箇所に散在する:
+### 2.2 参照の保存形態（移行の最難所マップ）
 
-| 保存先 | 形態 | 例 |
+| 保存先 | 形態 | 移行 |
 |---|---|---|
-| `banners.thumbnail_url` / `fullres_url` | 列（full URL） | `.../object/public/user-images/{uid}/...png` |
-| `templates.thumbnail_url` | 列（full URL） | 同上 |
-| `banners.elements` / `templates.elements` | **JSONB 配列内の image要素 `src`（full URL）** | 同上 |
-| `default_images.storage_path` / `thumbnail_path` | 列（bucket相対パス） | `{file}.png` |
-| `user_images.storage_path` / `thumbnail_path` | 列（bucket相対パス） | `{uid}/{file}.png` |
-| `production_outputs.storage_path` / `storage_bucket` / `storage_provider` | 列（**provider既設**） | `provider='supabase'`, `bucket='user-images'` |
+| `production_outputs.storage_provider/storage_bucket/storage_path` | **provider列既設** | provider を `r2` に切替＋key維持で済む |
+| `default_images.storage_path` / `thumbnail_path` | bucket相対パス | provider列を足す or 解決をR2固定 |
+| `banners.thumbnail_url` / `fullres_url` | full URL列 | URL書換（列） |
+| `templates.thumbnail_url` | full URL列 | URL書換（列） |
+| `banners.elements` / `templates.elements` | **JSONB配列内 image要素 `src`（full URL）** | **最難所**：JSONB走査置換 |
 
-- **`production_outputs` は既に `storage_provider`/`storage_bucket` を持つ**（[productionOutputBuilder.ts:312](../src/utils/productionOutputBuilder.ts)）→ 多プロバイダ前提の設計が一部入っている。これを全体の標準にするのが筋。
-- 最難所は **JSONB 内に焼き込まれた full URL**（banners/templates の elements）。ここを書き換えないと移行後に画像が壊れる。
+### 2.3 アップロードを書く実装（R2に振り向ける対象）
+- `src/utils/productionOutputBuilder.ts`（`storage_provider:'supabase'` の既設例 → `'r2'` へ）
+- `src/utils/bannerStorage.ts`（`{uid}/thumbnails/…`, `{uid}/downloads/…`）
+- `src/utils/storage.ts`（`uploadDataUrlToBucket` 等の共通アップロード）
+- `src/components/ImageLibraryModal.tsx`（default / user アップロード）
 
-### 2.3 バケット
-- `user-images`（ユーザー画像・バナーのサムネ/fullres・production出力）
-- `default-images`（プレミアム/公式ライブラリ＝公開）
+### 2.4 クロスアプリ依存（重要）
+- `src/utils/gallerySync.ts` が `production_outputs.storage_bucket/storage_path` から**Gallery(whatif-ep.xyz)用の公開URL**を生成し、canonical `work_variants`（feed画像）へ反映している。
+  → production を R2 化したら **gallerySync の URL 生成も `resolveAssetUrl` 経由（R2）**にすること。Gallery 側（別リポジトリ `whatif-ep-xyz`）が壊れないか必ず検証。
 
 ## 3. ターゲット・アーキテクチャ
 
-### 3.1 配信（read）
-- **R2 公開バケット ＋ 独自ドメイン**（推奨: `assets.whatif-ep.xyz` を R2 にカスタムドメイン接続）。
-  - 暫定で既存の `*.r2.dev` 公開URLでも可だが、本番は独自ドメイン推奨（キャッシュ/ブランド/将来の差し替え耐性）。
-- 公開配信なので GET は認証不要。**private なユーザー画像をどう扱うかは 3.3 で判断**。
+### 3.1 共通リゾルバ（読み取り統一）
+```ts
+// provider 非依存でURLを解決。移行中は supabase / r2 を併用できる。
+function resolveAssetUrl(
+  provider: 'supabase' | 'r2',
+  bucket: string,
+  key: string,
+  version?: string
+): string
+// r2       → `${R2_PUBLIC_BASE_URL}/${key}` (+ ?v=version)   ※bucketは単一なら省略可
+// supabase → getSupabaseStoragePublicUrl(bucket, key) (+ ?v=version)
+```
+- 全画面の読み取りをこの関数に集約。full URL を直接保存する箇所は段階的に `{provider,bucket,key}` 化していく。
 
-### 3.2 アップロード（write）
-ブラウザに R2 認証情報は置けないため、**presigned PUT URL 方式**:
-1. クライアント → 署名発行エンドポイント（**Supabase Edge Function** もしくは **Cloudflare Worker**）に「このkeyにアップしたい」と要求。
-2. エンドポイントが認証（Supabase JWT 検証）＋権限チェック後、R2 への **presigned PUT URL** を返す。
-3. クライアントが R2 へ直接 PUT。
-4. 完了後、`{provider:'r2', bucket, key}` をDBに記録。
-- 署名発行は **Supabase Edge Function を推奨**（既に Supabase Auth があるので JWT 検証が楽。R2 は S3 互換APIなので `@aws-sdk/s3-request-presigner` で presign 可能）。
+### 3.2 アップロード（presigned PUT 方式）
+ブラウザに R2 認証情報は置けない。**Supabase Edge Function で presigned PUT URL を発行**:
+1. クライアント → Edge Function `r2-presign` に「この key にアップしたい」と要求（Supabase JWT 付き）。
+2. Edge Function が JWT 検証＋key の権限チェック（`{uid}/…` を強制）後、R2 への presigned PUT URL を返す。
+3. クライアントが R2 に直接 PUT。
+4. 完了後、DBに `{provider:'r2', bucket, key}`（or R2 full URL）を記録。
+- R2 は S3 互換 → `@aws-sdk/s3-request-presigner` で presign。
 
-### 3.3 アクセス制御（public vs private）
-- **公開アセット**（`default_images`＝プレミアムライブラリ、`production_outputs`＝公式成果物、テンプレ/バナーのサムネ）→ **R2 公開バケットでOK**。最初の移行対象。
-- **private なユーザーアップロード**（`user_images`）→ 選択肢:
-  - (a) 当面 Supabase に残す（容量の主因ではない、認証が楽）。
-  - (b) R2 + 署名付きGET URL（Worker/Edge で都度発行）or 非公開バケット＋Worker認証。
-  - **推奨: フェーズ1では公開アセットのみR2、user_images は Supabase 据え置き。** private のR2化は後続フェーズで判断。
+### 3.3 アクセス制御
+- 公開バケット（`whatif-assets`）で配信。GET は認証不要。
+- private なユーザー画像も当面は公開バケットに置く（URL が推測困難な key 運用）。厳密な非公開要件が出たら署名GET/Worker認証を後続で検討。
 
 ### 3.4 CORS
-- ブラウザ直PUTのため、R2バケットに **CORS設定**（`PUT`/`GET`, `Origin: https://app.whatif-ep.xyz` 等）が必要。
+- R2 バケットに CORS 設定：`PUT`,`GET`、`Origin: https://app.whatif-ep.xyz`（および dev: `http://localhost:5173`）。
 
-## 4. データモデルの方針
+## 4. 実装シーケンス（スコープではなく“順番”）
 
-**URLを焼き込まず、provider非依存の「key」を持ち、読み取り時にURL解決する**のが理想。ただし既存の full-URL 焼き込みが大量にあるため、現実的には次の二段構え:
+> 方針: **新規書き込みは即 R2**。既存はリスク順にバックフィル。各 Wave 後に検証してから Supabase 側を削除。
 
-1. **新規**: `{storage_provider, storage_bucket, storage_key}` を持つ（production_outputs方式を user_images/default_images/banners assets にも拡張）。読み取りは `resolveAssetUrl(provider, bucket, key, version)` の共通関数で生成。
-2. **既存**: full URL の移行は **バックフィル・スクリプトで一括書き換え**（5章）。
+### Phase 0 — インフラ整備（**ユーザー操作 / Cloudflare・Supabase**）
+- [ ] R2 バケット `whatif-assets` 作成（Cloudflare R2）
+- [ ] カスタムドメイン `assets.whatif-ep.xyz` をバケットに接続（Cloudflare DNS は既存。Proxy/公開設定に注意）
+- [ ] R2 API トークン発行（S3互換）→ Account ID / Access Key ID / Secret
+- [ ] バケットに CORS 設定（PUT/GET, app・localhost オリジン）
+- [ ] シークレット投入: Supabase Edge Function secrets に `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` / `R2_BUCKET=whatif-assets`
+- [ ] Vercel（フロント）に `VITE_R2_PUBLIC_BASE_URL=https://assets.whatif-ep.xyz`
 
-共通リゾルバ（新規実装イメージ）:
-```ts
-function resolveAssetUrl(provider: 'supabase'|'r2', bucket: string, key: string, version?: string): string
-// provider==='r2' → `${R2_PUBLIC_BASE}/${bucket}/${key}` (+ ?v=version)
-// provider==='supabase' → getSupabaseStoragePublicUrl(bucket, key)
-```
+### Phase 1 — 読み取り統一＋新規書き込みをR2へ（コード / Claude）
+- [ ] `resolveAssetUrl` 実装、読み取り経路を集約
+- [ ] Edge Function `r2-presign` 実装・デプロイ（JWT検証＋key権限）
+- [ ] アップロード経路をR2へ: production出力 / banner thumbnail・fullres / user upload / default-images
+- [ ] `gallerySync` の production URL を `resolveAssetUrl`（R2）に変更し Gallery を検証
 
-## 5. 移行フェーズ計画
+### Phase 2 — 既存バックフィル Wave A（列ベース・低リスク）
+- [ ] `production/`（891MB）→ R2 コピー＋`production_outputs.storage_provider='r2'`
+- [ ] `default-images`（369MB）→ R2 コピー＋参照切替
+- [ ] `downloads/`(fullres) / `thumbnails/` → R2 コピー＋`fullres_url`/`thumbnail_url` 列をR2 URLへ書換
+- [ ] 各々ドライラン→冪等スクリプト。完了後 Gallery/エディタ/一覧/Content Factory/書き出しを検証
 
-### Phase 0 — インフラ整備
-- R2 バケット作成（例: `whatif-assets`）、独自ドメイン接続、CORS設定。
-- R2 アクセスキー発行（S3互換）。Supabase Edge Function 環境変数に格納。
-- presigned URL 発行 Edge Function を実装・デプロイ。
-- 環境変数追加（6章）。
+### Phase 3 — 既存バックフィル Wave B（JSONB・最難所）
+- [ ] root upload（~244MB）を R2 コピー
+- [ ] `banners.elements` / `templates.elements` の image `src`（旧Supabase URL → 新R2 URL）を**走査置換**
+- [ ] 旧→新URLマッピング表で冪等化。**置換前後で全保存プロジェクトの画像が壊れないことを必ずテスト**
 
-### Phase 1 — 新規アップロードをR2へ（公開アセット）
-- `default_images` アップロード（[ImageLibraryModal](../src/components/ImageLibraryModal.tsx) の default タブ）を R2 経由に。
-- production 出力（[productionOutputBuilder.ts](../src/utils/productionOutputBuilder.ts)）の保存先を R2 に（`storage_provider:'r2'`）。
-- 読み取りを `resolveAssetUrl` 経由に統一。
+### Phase 4 — 検証 → Supabase 旧オブジェクト削除
+- [ ] 全画面検証後、`/admin/storage-cleanup`（[src/pages/StorageCleanup.tsx](../src/pages/StorageCleanup.tsx)）等で Supabase 側の旧ファイルを削除
+- [ ] Supabase Storage を「肥大化しない静的素材のみ」状態へ
 
-### Phase 2 — 既存ファイルのバックフィル
-- スクリプトで Supabase → R2 へコピー（または再アップロード）。
-- DB参照を書き換え:
-  - 列（thumbnail_url/fullres_url/storage_path 等）。
-  - **JSONB**: `banners.elements` / `templates.elements` の image `src` を、旧 Supabase URL → 新 R2 URL に置換（`jsonb` を走査して `replace()`）。**ここが要注意・要テスト**。
-- 旧URLと新URLのマッピング表を作り、冪等に実行できるようにする。
-
-### Phase 3 — 検証 → Supビーから削除
-- 全画面（エディタ/一覧/ギャラリー/Content Factory/書き出し）で画像が表示されるか検証。
-- 問題なければ Supabase 側の旧オブジェクトを削除（既存の Storage Cleanup を流用可能）。
-
-## 6. 追加する環境変数（案）
+## 5. 追加する環境変数
 
 | 変数 | 用途 | 置き場所 |
 |---|---|---|
-| `R2_PUBLIC_BASE_URL` (`VITE_` でフロント公開) | 配信ベースURL（例 `https://assets.whatif-ep.xyz`） | Vercel |
+| `VITE_R2_PUBLIC_BASE_URL` | 配信ベースURL（`https://assets.whatif-ep.xyz`） | Vercel（フロント公開） |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | presign用（**フロントに出さない**） | Supabase Edge Function secrets |
-| `R2_BUCKET` | 対象バケット名 | 両方 |
+| `R2_BUCKET` | 対象バケット（`whatif-assets`） | Edge Function（必要ならフロントも） |
 
-## 7. リスク・要検討
+## 6. リスク・要検討
 
-1. **JSONB内のfull URL書き換え**（最大の難所）。banners/templates の elements を壊さず一括置換する移行スクリプトの設計・テストが必須。
-2. **private user_images の扱い**（公開バケットに置くと誰でもURLで見られる）。フェーズ1では Supabase 据え置きで回避。
-3. **CORS / presign の権限設計**（誰がどのkeyにPUTできるか）。
-4. **キャッシュ**: 独自ドメイン＋`?v=` で十分か、Cloudflare Cache設定が要るか。
-5. **The Club（Gallery）との整合**: 既に R2 を使う Gallery 側と命名規約・ドメインを揃える（`whatif-ep.xyz` 配下の別アプリ。リポジトリも別の可能性）。
+1. **JSONB内 full URL 書換**（Phase 3・最大の難所）。banners/templates の elements を壊さず一括置換するスクリプトの設計・ドライラン・テストが必須。
+2. **Gallery 整合**（`gallerySync`）。production の R2 化が whatif-ep.xyz 側の feed 画像を壊さないか検証。
+3. **CORS / presign 権限**。`{uid}/…` 以外に PUT できないよう Edge Function で強制。
+4. **DB 書き込みは手動**。MCP は read-only。スキーマ変更・バックフィルの DML/DDL は SQL を提示してユーザーが実行（[[supabase-writes-manual]]）。
+5. **キャッシュ**: 独自ドメイン＋`?v=` で十分か、Cloudflare Cache 設定が要るか。
 
-## 8. 次セッションの着手チェックリスト
-
-- [ ] R2 バケット＋独自ドメイン＋CORS（Phase 0）
-- [ ] presigned URL 発行 Edge Function（Supabase）
-- [ ] `resolveAssetUrl` 共通リゾルバ実装＋読み取り経路の統一
-- [ ] default_images / production 出力のアップロード先をR2へ（Phase 1）
-- [ ] バックフィル・スクリプト（列＋JSONB）設計・ドライラン（Phase 2）
-- [ ] 検証 → Supabase 旧オブジェクト削除（Phase 3）
-
-## 参考（現状の関連実装）
+## 7. 参考（関連実装）
 - `src/utils/supabase.ts` — `getSupabaseStoragePublicUrl`
-- `src/utils/bannerStorage.ts` — `versionAssetUrl`, thumbnail/fullres 保存
-- `src/utils/productionOutputBuilder.ts` — `storage_provider:'supabase'`（provider列の既設例）
+- `src/utils/storage.ts` — `uploadDataUrlToBucket` / `removeFilesFromBucket`
+- `src/utils/bannerStorage.ts` — thumbnails/downloads 保存・`versionAssetUrl`
+- `src/utils/productionOutputBuilder.ts` — `storage_provider`（provider列の既設例）
+- `src/utils/gallerySync.ts` — production → Gallery 公開URL同期（クロスアプリ）
 - `src/components/ImageLibraryModal.tsx` — default/user アップロード
+- `src/pages/StorageCleanup.tsx` — 削除フロー（Phase 4 で流用）
 - `src/data/theClubThumbnails.ts` — 既存 R2 公開URL利用例
-- `src/pages/StorageCleanup.tsx` — 削除フロー（Phase 3 で流用可）

@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase';
+import { isR2Configured } from './assetUrl';
 import { removeFilesFromBucket, uploadBlobToBucket } from './storage';
 import {
   COVER_SIZE,
@@ -291,7 +292,7 @@ async function saveCurrentOutput(params: {
     filePath,
     params.blob,
     mimeType,
-    { upsert: true },
+    { upsert: true, r2: true },
   );
 
   const { error: deactivateError } = await supabase
@@ -311,7 +312,9 @@ async function saveCurrentOutput(params: {
       project_id: params.projectId,
       source_banner_id: params.sourceBannerId,
       role: params.role,
-      storage_provider: 'supabase',
+      // Logical bucket + path are unchanged; only the provider flips to R2 so
+      // resolveAssetUrl('r2', OUTPUT_BUCKET, filePath) points at the same object.
+      storage_provider: isR2Configured ? 'r2' : 'supabase',
       storage_bucket: OUTPUT_BUCKET,
       storage_path: filePath,
       mime_type: mimeType,

@@ -1,4 +1,5 @@
-import { getSupabase, getSupabaseStoragePublicUrl } from './supabase';
+import { getSupabase } from './supabase';
+import { resolveAssetUrl, type StorageProvider } from './assetUrl';
 import type { ProductionProjectSummary } from '../types/production-project';
 
 type GallerySeriesRow = {
@@ -29,6 +30,7 @@ type WorkOfferRow = {
 
 type ProductionOutputRow = {
   role: string;
+  storage_provider: string | null;
   storage_bucket: string | null;
   storage_path: string | null;
   width: number | null;
@@ -83,7 +85,7 @@ async function loadCurrentOutputs(projectId: string): Promise<ProductionOutputRo
   const supabase = await getSupabase();
   const { data, error } = await supabase
     .from('production_outputs')
-    .select('role, storage_bucket, storage_path, width, height, status')
+    .select('role, storage_provider, storage_bucket, storage_path, width, height, status')
     .eq('project_id', projectId)
     .eq('is_current', true);
 
@@ -120,7 +122,8 @@ export async function syncGalleryWorkFromProductionProject(
   const displayCode = project.project.work_display_code;
   const variantNumber = project.project.variant_number;
   const fallbackTitle = `${series.name} ${displayCode}`;
-  const feedPublicUrl = getSupabaseStoragePublicUrl(
+  const feedPublicUrl = resolveAssetUrl(
+    (feedOutput.storage_provider as StorageProvider) ?? 'supabase',
     feedOutput.storage_bucket,
     feedOutput.storage_path,
   );
