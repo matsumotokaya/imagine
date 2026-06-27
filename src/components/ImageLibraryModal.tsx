@@ -4,6 +4,8 @@ import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
 import type { DefaultImage, UserImage } from '../types/image-library';
 import { formatWorkVariantLabel, insertUserImageRecord } from '../utils/libraryAssets';
 import { generateImageThumbnail } from '../utils/imageThumbnail';
+import { isR2Configured, resolveAssetUrl, toR2Key, type StorageProvider } from '../utils/assetUrl';
+import { deleteFromR2, uploadBlobToR2 } from '../utils/r2Upload';
 
 interface ImageLibraryModalProps {
   isOpen: boolean;
@@ -194,22 +196,39 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
 
           if (activeTab === 'default') {
             const filePath = fileName;
-            const { error: uploadError } = await supabase.storage.from('default-images').upload(filePath, file);
-            if (uploadError) throw uploadError;
+            // Route admin default-images uploads to R2 when configured (the
+            // presign Edge Function allows `default-images/...` for admins),
+            // recording storage_provider:'r2' so the read path resolves to R2.
+            // Falls back to Supabase Storage when R2 is not configured.
+            const useR2 = isR2Configured;
+            let thumbnailPath: string | null = thumbnail ? `thumbnails/${fileName}.jpg` : null;
 
-            let thumbnailPath: string | null = null;
-            if (thumbnail) {
-              thumbnailPath = `thumbnails/${fileName}.jpg`;
-              const { error: thumbError } = await supabase.storage
-                .from('default-images')
-                .upload(thumbnailPath, thumbnail.blob, { contentType: 'image/jpeg', upsert: true });
-              if (thumbError) throw thumbError;
+            if (useR2) {
+              await uploadBlobToR2(
+                toR2Key('default-images', filePath),
+                file,
+                file.type || 'application/octet-stream',
+              );
+              if (thumbnail && thumbnailPath) {
+                await uploadBlobToR2(toR2Key('default-images', thumbnailPath), thumbnail.blob, 'image/jpeg');
+              }
+            } else {
+              const { error: uploadError } = await supabase.storage.from('default-images').upload(filePath, file);
+              if (uploadError) throw uploadError;
+
+              if (thumbnail && thumbnailPath) {
+                const { error: thumbError } = await supabase.storage
+                  .from('default-images')
+                  .upload(thumbnailPath, thumbnail.blob, { contentType: 'image/jpeg', upsert: true });
+                if (thumbError) throw thumbError;
+              }
             }
 
             const { error: dbError } = await supabase.from('default_images').insert({
               name: file.name,
               storage_path: filePath,
               thumbnail_path: thumbnailPath,
+              storage_provider: useR2 ? 'r2' : 'supabase',
               width,
               height,
               file_size: file.size,
@@ -269,31 +288,40 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
     }
   };
 
-  // Get cached public URL (no transform — requires paid plan)
-  const getCachedDisplayUrl = (storagePath: string, bucketName: 'default-images' | 'user-images'): string => {
-    const cacheKey = `${bucketName}:${storagePath}`;
+  // Get cached public URL (no transform — requires paid plan). The provider is
+  // only meaningful for provider-aware tables (default_images carries
+  // storage_provider); user-images always resolves on Supabase for now.
+  const getCachedDisplayUrl = (
+    storagePath: string,
+    bucketName: 'default-images' | 'user-images',
+    provider: StorageProvider = 'supabase',
+  ): string => {
+    const cacheKey = `${provider}:${bucketName}:${storagePath}`;
 
     if (urlCacheRef.current.has(cacheKey)) {
       return urlCacheRef.current.get(cacheKey)!;
     }
 
-    const publicUrl = getSupabaseStoragePublicUrl(bucketName, storagePath);
+    const publicUrl =
+      bucketName === 'default-images'
+        ? resolveAssetUrl(provider, bucketName, storagePath)
+        : getSupabaseStoragePublicUrl(bucketName, storagePath);
     urlCacheRef.current.set(cacheKey, publicUrl);
     return publicUrl;
   };
 
-  const getPublicUrl = (storagePath: string, bucketName: 'default-images' | 'user-images'): string => {
-    return getSupabaseStoragePublicUrl(bucketName, storagePath);
-  };
-
   const handleSelectDefaultImage = (image: DefaultImageWithUrl) => {
-    const publicUrl = getPublicUrl(image.storage_path, 'default-images');
+    const publicUrl = resolveAssetUrl(
+      image.storage_provider ?? 'supabase',
+      'default-images',
+      image.storage_path,
+    );
     onSelectImage(publicUrl, image.width || 800, image.height || 600);
     onClose();
   };
 
   const handleSelectUserImage = (image: UserImageWithUrl) => {
-    const publicUrl = getPublicUrl(image.storage_path, 'user-images');
+    const publicUrl = getSupabaseStoragePublicUrl('user-images', image.storage_path);
     onSelectImage(publicUrl, image.width || 800, image.height || 600);
     onClose();
   };
@@ -307,11 +335,17 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
     try {
       const supabase = await getSupabase();
 
-      // Remove the original + thumbnail objects from the bucket first.
+      // Remove the original + thumbnail objects from the bucket first. Route to
+      // the storage backend the row actually lives on so R2-backed rows delete
+      // their R2 objects (not a non-existent Supabase copy).
       const paths = [image.storage_path, image.thumbnail_path].filter(Boolean) as string[];
       if (paths.length > 0) {
-        const { error: storageError } = await supabase.storage.from('default-images').remove(paths);
-        if (storageError) throw storageError;
+        if ((image.storage_provider ?? 'supabase') === 'r2') {
+          await deleteFromR2(paths.map((path) => toR2Key('default-images', path)));
+        } else {
+          const { error: storageError } = await supabase.storage.from('default-images').remove(paths);
+          if (storageError) throw storageError;
+        }
       }
 
       // Then remove the metadata row.
@@ -464,7 +498,11 @@ export const ImageLibraryModal = ({ isOpen, onClose, onSelectImage, initialTab =
                       title={image.name}
                     >
                       <img
-                        src={getCachedDisplayUrl(image.thumbnail_path || image.storage_path, bucketName)}
+                        src={getCachedDisplayUrl(
+                          image.thumbnail_path || image.storage_path,
+                          bucketName,
+                          isDefaultTab ? (image as DefaultImageWithUrl).storage_provider ?? 'supabase' : 'supabase',
+                        )}
                         alt={image.name}
                         className="w-full h-full object-contain"
                         loading="lazy"

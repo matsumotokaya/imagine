@@ -1,4 +1,4 @@
-import { getSupabase, getSupabaseStoragePublicUrl } from './supabase';
+import { getSupabase } from './supabase';
 import type { DefaultImage } from '../types/image-library';
 import type { CanvasElement, ImageElement, Template, TextElement } from '../types/template';
 import type {
@@ -12,6 +12,7 @@ import { formatSeriesLabel, formatWorkDisplayCode } from './libraryAssets';
 import { ensureCanonicalWorkVariant } from './canonicalWorks';
 import { getFitToCanvasPlacement } from './canvasPlacement';
 import { appendCacheBust, extractStoragePathFromPublicUrl, removeFilesFromBucket } from './storage';
+import { resolveAssetUrl, type StorageProvider } from './assetUrl';
 
 const DEFAULT_DRAFT_CANVAS_COLOR = '#808080';
 const INSTAGRAM_FEED_ACCENT_COLOR = '#fd4d52';
@@ -104,7 +105,7 @@ function getAssetDimensions(asset: DefaultImage): { width: number; height: numbe
 }
 
 function buildCenteredImageElement(asset: DefaultImage, spec: DraftBannerSpec): ImageElement {
-  const src = getSupabaseStoragePublicUrl('default-images', asset.storage_path);
+  const src = resolveAssetUrl(asset.storage_provider ?? 'supabase', 'default-images', asset.storage_path);
   const { width: sourceWidth, height: sourceHeight } = getAssetDimensions(asset);
   const placement = getFitToCanvasPlacement(
     spec.template.width,
@@ -260,11 +261,11 @@ async function loadProjectSummariesByIds(projectIds: string[]): Promise<Producti
     }
   }
 
-  const assetMap = new Map<string, { id: string; name: string; storage_path: string }>();
+  const assetMap = new Map<string, { id: string; name: string; storage_path: string; storage_provider?: StorageProvider }>();
   if (assetIds.length > 0) {
     const { data: assets, error: assetsError } = await supabase
       .from('default_images')
-      .select('id, name, storage_path')
+      .select('id, name, storage_path, storage_provider')
       .in('id', assetIds);
 
     if (assetsError) {
@@ -301,7 +302,7 @@ async function loadProjectSummariesByIds(projectIds: string[]): Promise<Producti
     bannersByProject.set(link.project_id, projectBannersForProject);
   }
 
-  const primaryAssetsByProject = new Map<string, { id: string; name: string; storage_path: string } | null>();
+  const primaryAssetsByProject = new Map<string, { id: string; name: string; storage_path: string; storage_provider?: StorageProvider } | null>();
   for (const link of (projectAssets ?? []) as DbAssetLink[]) {
     const existing = primaryAssetsByProject.get(link.project_id);
     if (existing) {

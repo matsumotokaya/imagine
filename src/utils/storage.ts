@@ -19,7 +19,7 @@ interface UploadOptions {
   r2?: boolean;
 }
 
-const getExtensionFromMime = (mimeType: string): string => {
+export const getExtensionFromMime = (mimeType: string): string => {
   if (mimeType === 'image/jpeg') return 'jpg';
   if (mimeType === 'image/png') return 'png';
   if (mimeType === 'image/gif') return 'gif';

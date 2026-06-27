@@ -1,3 +1,4 @@
+import type { StorageProvider } from '../utils/assetUrl';
 import type { AssetRole, AssetScope, AssetSourceContext, WorkSeriesSlug } from '../utils/libraryAssets';
 
 export interface DefaultImage {
@@ -5,6 +6,9 @@ export interface DefaultImage {
   name: string;
   storage_path: string;
   thumbnail_path?: string | null;
+  // Storage backend for storage_path / thumbnail_path. Legacy rows are
+  // 'supabase'; backfilled rows flip to 'r2'. Absent -> treat as 'supabase'.
+  storage_provider?: StorageProvider;
   width: number | null;
   height: number | null;
   file_size: number | null;

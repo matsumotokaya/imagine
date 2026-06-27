@@ -1,3 +1,5 @@
+import type { StorageProvider } from '../utils/assetUrl';
+
 export type ProductionProjectStatus =
   | 'draft'
   | 'in_progress'
@@ -83,6 +85,7 @@ export interface ProductionProjectSummary {
     id: string;
     name: string;
     storage_path: string;
+    storage_provider?: StorageProvider;
   } | null;
   banners: Array<{
     linkId: string;

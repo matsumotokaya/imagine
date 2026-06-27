@@ -3,8 +3,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { SitePageLayout } from '../components/SitePageLayout';
-import { getSupabase, getSupabaseStoragePublicUrl } from '../utils/supabase';
-import { extractStoragePathFromPublicUrl, uploadFileToBucket } from '../utils/storage';
+import { getSupabase } from '../utils/supabase';
+import { isR2Configured, resolveAssetUrl, toR2Key } from '../utils/assetUrl';
+import { uploadBlobToR2 } from '../utils/r2Upload';
+import { extractStoragePathFromPublicUrl, getExtensionFromMime, uploadFileToBucket } from '../utils/storage';
 import { generateImageThumbnail } from '../utils/imageThumbnail';
 import {
   formatSeriesLabel,
@@ -532,8 +534,16 @@ export function ContentFactory() {
       for (const file of selectedFiles) {
         try {
           const pathBase = `official/${seriesSlug}/${variantCode}/${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          const publicUrl = await uploadFileToBucket(file, 'default-images', pathBase);
-          const storagePath = extractStoragePathFromPublicUrl(publicUrl, 'default-images');
+          // Route new default-images uploads to R2 when configured (opt-in r2),
+          // recording storage_provider so the read path resolves the right
+          // backend. Falls back to Supabase Storage when R2 is unavailable.
+          const useR2 = isR2Configured;
+          const publicUrl = await uploadFileToBucket(file, 'default-images', pathBase, { r2: useR2 });
+          // The R2 public URL is not a Supabase public URL, so derive the
+          // bucket-relative storage path deterministically instead of parsing it.
+          const storagePath = useR2
+            ? `${pathBase}.${getExtensionFromMime(file.type || '')}`
+            : extractStoragePathFromPublicUrl(publicUrl, 'default-images');
 
           if (!storagePath) {
             throw new Error(`Failed to resolve storage path for ${file.name}`);
@@ -554,10 +564,14 @@ export function ContentFactory() {
           let thumbnailPath: string | null = null;
           if (thumbnail) {
             const thumbStoragePath = `thumbnails/${pathBase}.jpg`;
-            const { error: thumbError } = await supabase.storage
-              .from('default-images')
-              .upload(thumbStoragePath, thumbnail.blob, { contentType: 'image/jpeg', upsert: true });
-            if (thumbError) throw thumbError;
+            if (useR2) {
+              await uploadBlobToR2(toR2Key('default-images', thumbStoragePath), thumbnail.blob, 'image/jpeg');
+            } else {
+              const { error: thumbError } = await supabase.storage
+                .from('default-images')
+                .upload(thumbStoragePath, thumbnail.blob, { contentType: 'image/jpeg', upsert: true });
+              if (thumbError) throw thumbError;
+            }
             thumbnailPath = thumbStoragePath;
           }
 
@@ -565,6 +579,7 @@ export function ContentFactory() {
             name: file.name,
             storagePath,
             thumbnailPath,
+            storageProvider: useR2 ? 'r2' : 'supabase',
             width: img.width,
             height: img.height,
             fileSize: file.size,
@@ -1077,7 +1092,7 @@ export function ContentFactory() {
                 <div key={asset.id} className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
                   <div className="aspect-[4/3] bg-white">
                     <img
-                      src={getSupabaseStoragePublicUrl('default-images', asset.thumbnail_path || asset.storage_path)}
+                      src={resolveAssetUrl(asset.storage_provider ?? 'supabase', 'default-images', asset.thumbnail_path || asset.storage_path)}
                       alt={asset.name}
                       className="h-full w-full object-contain"
                       loading="lazy"
@@ -1256,7 +1271,7 @@ export function ContentFactory() {
                             <div className="mt-3 flex items-center gap-3">
                               <div className="size-12 overflow-hidden rounded-lg bg-white">
                                 <img
-                                  src={getSupabaseStoragePublicUrl('default-images', entry.sourceAsset.storage_path)}
+                                  src={resolveAssetUrl(entry.sourceAsset.storage_provider ?? 'supabase', 'default-images', entry.sourceAsset.storage_path)}
                                   alt={entry.sourceAsset.name}
                                   className="h-full w-full object-contain"
                                   loading="lazy"

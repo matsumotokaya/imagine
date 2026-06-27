@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase';
+import type { StorageProvider } from './assetUrl';
 import type { DefaultImage } from '../types/image-library';
 
 export const WORK_SERIES_OPTIONS = [
@@ -51,6 +52,9 @@ interface InsertDefaultImageRecordInput {
   name: string;
   storagePath: string;
   thumbnailPath?: string | null;
+  // Backend the uploaded objects live on. Defaults to 'supabase' to preserve
+  // the legacy behaviour; callers routing to R2 pass 'r2'.
+  storageProvider?: StorageProvider;
   width: number | null;
   height: number | null;
   fileSize: number | null;
@@ -157,6 +161,7 @@ export const insertDefaultImageRecord = async ({
   name,
   storagePath,
   thumbnailPath = null,
+  storageProvider = 'supabase',
   width,
   height,
   fileSize,
@@ -175,6 +180,7 @@ export const insertDefaultImageRecord = async ({
       name,
       storage_path: storagePath,
       thumbnail_path: thumbnailPath,
+      storage_provider: storageProvider,
       width: toIntOrNull(width),
       height: toIntOrNull(height),
       file_size: toIntOrNull(fileSize),
