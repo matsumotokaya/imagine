@@ -49,3 +49,41 @@ export const uploadBlobToR2 = async (
 
   return getR2PublicUrl(r2Key);
 };
+
+interface DeleteResponse {
+  deleted?: string[];
+  error?: string;
+  results?: Array<{ key: string; ok: boolean; status: number }>;
+}
+
+// Delete one or more objects from R2 via the `r2-presign` Edge Function
+// (op: 'delete'). The function verifies the caller's Supabase JWT and enforces
+// the same per-key permission model as uploads before signing the DELETE, so
+// R2 credentials never reach the client. `r2Keys` are full object keys
+// including the logical bucket prefix (e.g. `user-images/{uid}/...`).
+//
+// This mirrors `removeFilesFromBucket(bucket, paths)`: a no-op on an empty
+// list, idempotent (deleting a missing object succeeds), and throwing on
+// failure so callers can treat success as "the objects are gone".
+export const deleteFromR2 = async (r2Keys: string[]): Promise<void> => {
+  const uniqueKeys = [...new Set(r2Keys.filter(Boolean))];
+  if (uniqueKeys.length === 0) return;
+
+  const supabase = await getSupabase();
+  const { data, error } = await supabase.functions.invoke<DeleteResponse>('r2-presign', {
+    body: { op: 'delete', keys: uniqueKeys },
+  });
+
+  if (error) {
+    throw new Error(`R2 delete failed: ${error.message}`);
+  }
+  if (data?.error) {
+    throw new Error(`R2 delete failed: ${data.error}`);
+  }
+};
+
+// Convenience wrapper for deleting a single key. Mirrors `deleteFromR2` but
+// reads more naturally at call sites that only have one object.
+export const deleteFileFromR2 = async (r2Key: string): Promise<void> => {
+  await deleteFromR2([r2Key]);
+};

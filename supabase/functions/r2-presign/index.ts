@@ -14,18 +14,52 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
-// Presigned PUT expiry. Short-lived: an upload only needs a few seconds.
+// Presigned URL expiry. Short-lived: a single upload/delete only needs a few
+// seconds. Reused for both PUT (upload) and DELETE.
 const PRESIGN_EXPIRY_SECONDS = 600
 
-// Validate that `key` is one this user is allowed to write, mirroring the
-// existing Supabase Storage RLS:
-//   user-images/{uid}/...   -> only the owning user
-//   default-images/...      -> admins only
+// Cap on keys per delete request to bound the work a single call can do.
+const MAX_DELETE_KEYS = 1000
+
 const encodeKeyPath = (key: string): string =>
   key
     .split('/')
     .map((segment) => encodeURIComponent(segment))
     .join('/')
+
+// Validate that `key` is one this caller is allowed to mutate (PUT or DELETE),
+// mirroring the existing Supabase Storage RLS:
+//   user-images/{uid}/...   -> only the owning user
+//   default-images/...      -> admins only
+// Returns null when authorized, or a Response describing the rejection.
+const authorizeKey = async (
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  isAdmin: () => Promise<boolean>,
+  key: string,
+): Promise<Response | null> => {
+  // Reject path traversal / empty segments.
+  if (key.includes('..') || key.includes('//')) {
+    return json({ error: `Invalid key: ${key}` }, 400)
+  }
+
+  const segments = key.split('/')
+  const logicalBucket = segments[0]
+
+  if (logicalBucket === 'user-images') {
+    if (segments[1] !== userId) {
+      return json({ error: `Forbidden: key is outside your namespace: ${key}` }, 403)
+    }
+    return null
+  }
+  if (logicalBucket === 'default-images') {
+    if (!(await isAdmin())) {
+      return json({ error: 'Forbidden: admin only' }, 403)
+    }
+    return null
+  }
+  return json({ error: `Forbidden: unsupported bucket prefix: ${key}` }, 403)
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -57,38 +91,26 @@ serve(async (req) => {
       return json({ error: 'Invalid or expired session' }, 401)
     }
 
-    const body = await req.json().catch(() => null)
-    const key = typeof body?.key === 'string' ? body.key.replace(/^\/+/, '') : ''
-    const contentType =
-      typeof body?.contentType === 'string' ? body.contentType : 'application/octet-stream'
-
-    if (!key) {
-      return json({ error: 'Missing key' }, 400)
-    }
-    // Reject path traversal / empty segments.
-    if (key.includes('..') || key.includes('//')) {
-      return json({ error: 'Invalid key' }, 400)
-    }
-
-    const segments = key.split('/')
-    const logicalBucket = segments[0]
-
-    if (logicalBucket === 'user-images') {
-      if (segments[1] !== user.id) {
-        return json({ error: 'Forbidden: key is outside your namespace' }, 403)
-      }
-    } else if (logicalBucket === 'default-images') {
+    // Lazily resolve admin role and memoize: a multi-key delete only needs one
+    // profiles lookup even when several default-images keys are requested.
+    let adminChecked = false
+    let adminResult = false
+    const isAdmin = async (): Promise<boolean> => {
+      if (adminChecked) return adminResult
       const { data: profile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .maybeSingle()
-      if (profile?.role !== 'admin') {
-        return json({ error: 'Forbidden: admin only' }, 403)
-      }
-    } else {
-      return json({ error: 'Forbidden: unsupported bucket prefix' }, 403)
+      adminResult = profile?.role === 'admin'
+      adminChecked = true
+      return adminResult
     }
+
+    const body = await req.json().catch(() => null)
+    // `op` selects the operation; defaults to 'put' for backward compatibility
+    // with existing upload callers that only send { key, contentType }.
+    const op = typeof body?.op === 'string' ? body.op : 'put'
 
     const accountId = Deno.env.get('R2_ACCOUNT_ID')
     const accessKeyId = Deno.env.get('R2_ACCESS_KEY_ID')
@@ -105,11 +127,74 @@ serve(async (req) => {
       region: 'auto',
     })
 
-    const endpoint =
+    const buildEndpoint = (key: string): string =>
       `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${encodeKeyPath(key)}` +
       `?X-Amz-Expires=${PRESIGN_EXPIRY_SECONDS}`
 
-    const signed = await r2.sign(endpoint, {
+    if (op === 'delete') {
+      // Accept a single { key } or a batch { keys: [...] }. Each key is checked
+      // against the same permission model as PUT, then deleted server-side so
+      // R2 credentials never reach the client.
+      const rawKeys: unknown = Array.isArray(body?.keys)
+        ? body.keys
+        : typeof body?.key === 'string'
+          ? [body.key]
+          : []
+
+      const keys = (rawKeys as unknown[])
+        .filter((k): k is string => typeof k === 'string')
+        .map((k) => k.replace(/^\/+/, ''))
+        .filter(Boolean)
+
+      if (keys.length === 0) {
+        return json({ error: 'Missing key(s)' }, 400)
+      }
+      if (keys.length > MAX_DELETE_KEYS) {
+        return json({ error: `Too many keys (max ${MAX_DELETE_KEYS})` }, 400)
+      }
+
+      // Authorize every key before deleting any: an all-or-nothing check keeps
+      // the symmetry with PUT (one key, one permission decision).
+      for (const key of keys) {
+        const rejection = await authorizeKey(supabase, user.id, isAdmin, key)
+        if (rejection) return rejection
+      }
+
+      const results: Array<{ key: string; ok: boolean; status: number }> = []
+      for (const key of keys) {
+        const signed = await r2.sign(buildEndpoint(key), {
+          method: 'DELETE',
+          aws: { signQuery: true },
+        })
+        const res = await fetch(signed.url, { method: 'DELETE' })
+        // R2/S3 DELETE is idempotent: a missing object returns 204, so any
+        // 2xx (and 404) is treated as success.
+        const ok = res.ok || res.status === 404
+        results.push({ key, ok, status: res.status })
+        // Drain the body so the connection can be reused.
+        await res.arrayBuffer().catch(() => undefined)
+      }
+
+      const failed = results.filter((r) => !r.ok)
+      if (failed.length > 0) {
+        return json({ error: 'One or more deletes failed', results }, 502)
+      }
+      return json({ deleted: results.map((r) => r.key) })
+    }
+
+    // Default op: presigned PUT for uploads.
+    const key = typeof body?.key === 'string' ? body.key.replace(/^\/+/, '') : ''
+    const contentType =
+      typeof body?.contentType === 'string' ? body.contentType : 'application/octet-stream'
+
+    if (!key) {
+      return json({ error: 'Missing key' }, 400)
+    }
+
+    const rejection = await authorizeKey(supabase, user.id, isAdmin, key)
+    if (rejection) return rejection
+
+    const signed = await r2.sign(buildEndpoint(key), {
       method: 'PUT',
       aws: { signQuery: true },
     })
