@@ -42,3 +42,6 @@ screenshot/
 # Large assets
 reguler-asset/
 video/
+
+# R2 migration JSONB rewrite backups (contain user data)
+scripts/backups/
