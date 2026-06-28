@@ -61,6 +61,7 @@
     "fontWeight": "太さ",
     "letterSpacing": "カーニング",
     "lineHeight": "行間",
+    "textAlign": "文字揃え",
     "fill": "塗りつぶし",
     "stroke": "線",
     "strokeOnly": "線のみ",

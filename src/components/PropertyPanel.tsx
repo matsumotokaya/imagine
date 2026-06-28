@@ -12,6 +12,7 @@ interface PropertyPanelProps {
   onWeightChange?: (weight: number) => void;
   onLetterSpacingChange?: (letterSpacing: number) => void;
   onLineHeightChange?: (lineHeight: number) => void;
+  onAlignChange?: (align: 'left' | 'center' | 'right') => void;
   onOpacityChange?: (opacity: number) => void;
   onBringToFront?: () => void;
   onSendToBack?: () => void;
@@ -49,7 +50,7 @@ interface PropertyPanelProps {
 }
 
 
-export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, onSizeChange, onWeightChange, onLetterSpacingChange, onLineHeightChange, onOpacityChange, onBringToFront, onSendToBack, isMobile = false, onClose, onDelete, onFillEnabledChange, onStrokeChange, onStrokeWidthChange, onStrokeEnabledChange, onShadowEnabledChange, onShadowColorChange, onShadowBlurChange, onShadowOffsetXChange, onShadowOffsetYChange, onShadowOpacityChange, onImageBlurChange, onGenerateShadow, isGeneratingShadow, onFitToCanvas, selectedCount = 0, selectedElements = [], onCenterHorizontal, onCenterVertical }: PropertyPanelProps) => {
+export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, onSizeChange, onWeightChange, onLetterSpacingChange, onLineHeightChange, onAlignChange, onOpacityChange, onBringToFront, onSendToBack, isMobile = false, onClose, onDelete, onFillEnabledChange, onStrokeChange, onStrokeWidthChange, onStrokeEnabledChange, onShadowEnabledChange, onShadowColorChange, onShadowBlurChange, onShadowOffsetXChange, onShadowOffsetYChange, onShadowOpacityChange, onImageBlurChange, onGenerateShadow, isGeneratingShadow, onFitToCanvas, selectedCount = 0, selectedElements = [], onCenterHorizontal, onCenterVertical }: PropertyPanelProps) => {
   const { t } = useTranslation('editor');
   const getWeightLabel = (weight: number): string => {
     if (weight <= 100) return t('properties.fontWeights.thin');
@@ -359,6 +360,33 @@ export const PropertyPanel = ({ selectedElement, onColorChange, onFontChange, on
             <span className="text-xs font-medium text-gray-300 w-12 text-right">
               {((textElement.lineHeight ?? 1) * 100).toFixed(0)}%
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Text alignment buttons - only for text */}
+      {isTextElement && textElement && onAlignChange && (
+        <div className={spacing.section}>
+          <label className={`block text-xs font-medium text-gray-300 ${spacing.inner}`}>
+            {t('properties.textAlign')}
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {(['left', 'center', 'right'] as const).map((align) => {
+              const isActive = (textElement.align ?? 'left') === align;
+              return (
+                <button
+                  key={align}
+                  onClick={() => onAlignChange(align)}
+                  className={`px-3 py-2 rounded transition-colors flex items-center justify-center ${
+                    isActive
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-gray-300 bg-[#333333] hover:bg-[#444444]'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-lg">{`format_align_${align}`}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

@@ -10,6 +10,15 @@ interface ReleaseEntry {
 
 const RELEASE_NOTES: ReleaseEntry[] = [
   {
+    date: 'June 28, 2026',
+    items: [
+      'Text Alignment: Select a text element to set left, center, or right alignment from the properties panel — works across multiple lines like Illustrator',
+      'New banners now start with a centered, multi-line starter message in English',
+      'Editor properties sheet on mobile now peeks from the bottom edge instead of covering the selected object, and slides up when you make a selection',
+      'The mobile properties sheet no longer scrolls internally — just drag the whole sheet up or down',
+    ],
+  },
+  {
     date: 'June 17, 2026',
     items: [
       'Unified My Page, Admin Dashboard, and Content Factory under the same header/footer shell as the rest of the site',

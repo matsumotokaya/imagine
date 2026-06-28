@@ -651,6 +651,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(function Canvas(
     textarea.style.fontFamily = element.fontFamily;
     textarea.style.fontWeight = element.fontWeight.toString();
     textarea.style.letterSpacing = `${(element.letterSpacing ?? 0) * scale}px`;
+    textarea.style.textAlign = element.align ?? 'left';
     textarea.style.border = '2px solid #4F46E5';
     textarea.style.padding = '2px 4px';
     textarea.style.margin = '0px';

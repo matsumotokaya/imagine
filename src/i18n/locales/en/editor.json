@@ -61,6 +61,7 @@
     "fontWeight": "Font Weight",
     "letterSpacing": "Letter Spacing",
     "lineHeight": "Line Height",
+    "textAlign": "Text Align",
     "fill": "Fill",
     "stroke": "Stroke",
     "strokeOnly": "Stroke Only",

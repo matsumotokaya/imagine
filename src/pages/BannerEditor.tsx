@@ -519,10 +519,10 @@ export const BannerEditor = () => {
         const defaultText: TextElement = {
           id: `text-${Date.now()}-${Math.random()}`, // Unique ID with random component
           type: 'text',
-          text: 'IMAGINEでバナーをつくろう。',
-          x: banner.template.width / 2 - 550,
-          y: banner.template.height / 2 - 40,
-          fontSize: 80,
+          text: "Let's create\nyour banner\nwith IMAGINE.",
+          x: banner.template.width / 2 - 200,
+          y: banner.template.height / 2 - 110,
+          fontSize: 60,
           fontFamily: 'Arial',
           letterSpacing: 0,
           fill: '#000000',
@@ -531,6 +531,7 @@ export const BannerEditor = () => {
           strokeWidth: 2,
           strokeEnabled: false,
           fontWeight: 400,
+          align: 'center',
           visible: true,
         };
         const newElements = [defaultText];
@@ -1196,6 +1197,14 @@ export const BannerEditor = () => {
     }
   };
 
+  const handleAlignChange = (align: 'left' | 'center' | 'right') => {
+    if (selectedElementIds.length > 0) {
+      elementOps.updateElements(selectedElementIds, (el) =>
+        el.type === 'text' ? { align } : {}
+      );
+    }
+  };
+
   const handlePropertyColorChange = (color: string) => {
     if (selectedElementIds.length > 0) {
       elementOps.updateElements(selectedElementIds, (el) =>
@@ -1708,6 +1717,7 @@ export const BannerEditor = () => {
           onWeightChange={handleWeightChange}
           onLetterSpacingChange={handleLetterSpacingChange}
           onLineHeightChange={handleLineHeightChange}
+          onAlignChange={handleAlignChange}
           onOpacityChange={handleOpacityChange}
           onBringToFront={handleBringToFront}
           onSendToBack={handleSendToBack}
@@ -1847,6 +1857,7 @@ export const BannerEditor = () => {
             onWeightChange={handleWeightChange}
             onLetterSpacingChange={handleLetterSpacingChange}
             onLineHeightChange={handleLineHeightChange}
+            onAlignChange={handleAlignChange}
             onOpacityChange={handleOpacityChange}
             onBringToFront={handleBringToFront}
             onSendToBack={handleSendToBack}
